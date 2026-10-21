@@ -1,0 +1,34 @@
+uniform float4x4 ViewProj;
+uniform texture2d image;
+uniform texture2d backdrop;
+uniform float4 panel;
+uniform float4 size;
+uniform float visibility;
+uniform float brightness;
+uniform float tintOpacity;
+uniform float fillTop;
+uniform float radius;
+uniform float leftRadius;
+sampler_state linearSampler { Filter = Linear; AddressU = Clamp; AddressV = Clamp; };
+struct VertData { float4 pos : POSITION; float2 uv : TEXCOORD0; };
+VertData VSDefault(VertData v) { v.pos = mul(float4(v.pos.xyz, 1.0), ViewProj); return v; }
+float4 PSComposite(VertData v) : TARGET
+{
+ float4 original = image.Sample(linearSampler, v.uv);
+ float2 center = panel.xy + panel.zw * 0.5;
+ float cornerRadius = leftRadius > 0.0 && v.uv.x * size.x < center.x ? leftRadius : radius;
+ float2 q = abs(v.uv * size.xy - center) - panel.zw * 0.5 + cornerRadius;
+ float distance = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - cornerRadius;
+ float sdfCoverage = saturate(0.5 - distance) * visibility;
+ if (fillTop >= 0.0 && v.uv.y * size.y < fillTop) sdfCoverage = 0.0;
+ // With a visible tint, derive the edge from CEF's real antialiasing so the
+ // browser layer and the native backdrop cannot form a seam.
+ float coverage = tintOpacity > 0.001
+  ? min(sdfCoverage, saturate(original.a / tintOpacity))
+  : saturate(0.5 - (distance + 1.0)) * visibility;
+ float4 background = backdrop.Sample(linearSampler, v.uv);
+ background.rgb *= brightness;
+ background *= max(0.0, coverage - original.a);
+ return original + background;
+}
+technique Draw { pass { vertex_shader = VSDefault(v); pixel_shader = PSComposite(v); } }

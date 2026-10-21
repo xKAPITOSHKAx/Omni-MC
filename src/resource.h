@@ -1,0 +1,9 @@
+#pragma once
+
+#define IDR_SETTINGS_HTML 101
+#define IDR_OVERLAY_HTML 102
+#define IDR_APP_JS 103
+#define IDR_OVERLAY_JS 104
+#define IDR_TIMELINE_JS 105
+#define IDR_STYLE_CSS 106
+#define IDR_SKINS_CSS 107

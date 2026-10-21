@@ -1,0 +1,9 @@
+#include "src/resource.h"
+
+IDR_SETTINGS_HTML RCDATA "web/settings.html"
+IDR_OVERLAY_HTML RCDATA "web/overlay.html"
+IDR_APP_JS RCDATA "web/app.js"
+IDR_OVERLAY_JS RCDATA "web/overlay.js"
+IDR_TIMELINE_JS RCDATA "web/timeline.js"
+IDR_STYLE_CSS RCDATA "web/style.css"
+IDR_SKINS_CSS RCDATA "web/skins.css"
