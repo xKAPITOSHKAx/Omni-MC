@@ -24,8 +24,6 @@ Omni MC — музыкальный плеер для OBS Studio. Плагин п
 3. Распакуйте архив с плагином в папку OBS: `C:\ProgramData\obs-studio`.
 4. Запустите OBS Studio. Панель плагина появится в меню **Док-панели → Omni MC**.
 
-Для портативной версии OBS поместите `omni-mc.dll` в `<папка OBS>\obs-plugins\64bit`.
-
 ## Первый запуск
 
 1. Откройте панель через меню **Док-панели → Omni MC**.
@@ -116,8 +114,6 @@ Omni MC is a music player for OBS Studio. It reads the current track from Window
 2. Download the Windows x64 archive from the [Releases](https://github.com/xKAPITOSHKAx/Omni-MC/releases) page.
 3. Extract the plugin archive into the OBS folder: `C:\ProgramData\obs-studio`.
 4. Start OBS Studio. The plugin dock will appear under **Docks → Omni MC**.
-
-For a portable OBS installation, place `omni-mc.dll` in `<OBS folder>\obs-plugins\64bit`.
 
 ## First launch
 
