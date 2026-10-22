@@ -6,15 +6,15 @@
 
 Omni MC — музыкальный плеер для OBS Studio. Плагин получает сведения о текущем треке из медиасессий Windows и выводит их в настраиваемый браузерный источник.
 
-## Видеообзор
+## Демонстрация шаблонов
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=KxGcbSwnBQ4">
-    <img src="https://img.youtube.com/vi/KxGcbSwnBQ4/maxresdefault.jpg" alt="Видеообзор Omni MC" width="800">
+    <img src="https://img.youtube.com/vi/KxGcbSwnBQ4/maxresdefault.jpg" alt="Демонстрация шаблонов Omni MC" width="800">
   </a>
 </p>
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=KxGcbSwnBQ4"><strong>▶ Смотреть видеообзор Omni MC на YouTube</strong></a>
+  <a href="https://www.youtube.com/watch?v=KxGcbSwnBQ4"><strong>▶ Смотреть демонстрацию шаблонов Omni MC на YouTube</strong></a>
 </p>
 
 ## Установка и использование
@@ -92,15 +92,15 @@ Plugin version: **v1.3.6**. Platform: **Windows x64**. Tested with OBS Studio **
 
 Omni MC is a music player for OBS Studio. It reads the current track from Windows media sessions and displays it in a customizable browser source.
 
-## Video overview
+## Template showcase
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=KxGcbSwnBQ4">
-    <img src="https://img.youtube.com/vi/KxGcbSwnBQ4/maxresdefault.jpg" alt="Omni MC video overview" width="800">
+    <img src="https://img.youtube.com/vi/KxGcbSwnBQ4/maxresdefault.jpg" alt="Omni MC template showcase" width="800">
   </a>
 </p>
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=KxGcbSwnBQ4"><strong>▶ Watch the Omni MC overview on YouTube</strong></a>
+  <a href="https://www.youtube.com/watch?v=KxGcbSwnBQ4"><strong>▶ Watch the Omni MC template showcase on YouTube</strong></a>
 </p>
 
 ## Installation and usage
