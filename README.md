@@ -9,12 +9,12 @@ Omni MC — музыкальный плеер для OBS Studio. Плагин п
 ## Демонстрация шаблонов
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=KxGcbSwnBQ4">
-    <img src="https://img.youtube.com/vi/KxGcbSwnBQ4/maxresdefault.jpg" alt="Демонстрация шаблонов Omni MC" width="800">
+  <a href="https://www.youtube.com/watch?v=q8dy48X8Nd8">
+    <img src="https://img.youtube.com/vi/q8dy48X8Nd8/maxresdefault.jpg" alt="Демонстрация шаблонов Omni MC" width="800">
   </a>
 </p>
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=KxGcbSwnBQ4"><strong>▶ Смотреть демонстрацию шаблонов Omni MC на YouTube</strong></a>
+  <a href="https://www.youtube.com/watch?v=q8dy48X8Nd8"><strong>▶ Смотреть демонстрацию шаблонов Omni MC на YouTube</strong></a>
 </p>
 
 ## Установка и использование
@@ -95,12 +95,12 @@ Omni MC is a music player for OBS Studio. It reads the current track from Window
 ## Template showcase
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=KxGcbSwnBQ4">
-    <img src="https://img.youtube.com/vi/KxGcbSwnBQ4/maxresdefault.jpg" alt="Omni MC template showcase" width="800">
+  <a href="https://www.youtube.com/watch?v=q8dy48X8Nd8">
+    <img src="https://img.youtube.com/vi/q8dy48X8Nd8/maxresdefault.jpg" alt="Omni MC template showcase" width="800">
   </a>
 </p>
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=KxGcbSwnBQ4"><strong>▶ Watch the Omni MC template showcase on YouTube</strong></a>
+  <a href="https://www.youtube.com/watch?v=q8dy48X8Nd8"><strong>▶ Watch the Omni MC template showcase on YouTube</strong></a>
 </p>
 
 ## Installation and usage
