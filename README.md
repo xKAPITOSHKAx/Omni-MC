@@ -17,13 +17,22 @@ Omni MC — музыкальный плеер для OBS Studio. Плагин п
   <a href="https://www.youtube.com/watch?v=q8dy48X8Nd8"><strong>▶ Смотреть демонстрацию шаблонов Omni MC на YouTube</strong></a>
 </p>
 
-## Установка и использование
+## Установка
 
-1. Скачайте готовый архив на странице [Releases](https://github.com/xKAPITOSHKAx/Omni-mc/releases).
-2. Установите файлы плагина и перезапустите OBS Studio.
-3. Откройте панель **Omni MC** или выберите **Сервис → Omni MC — Музыкальный плеер**.
-4. Запустите музыку и выберите приложение в списке либо оставьте автоматический выбор.
-5. Настройте внешний вид и нажмите **Добавить плеер в источник**.
+1. Закройте OBS Studio.
+2. Скачайте архив для Windows x64 на странице [Releases](https://github.com/xKAPITOSHKAx/Omni-MC/releases).
+3. Распакуйте архив.
+4. Создайте папку `C:\ProgramData\obs-studio\plugins\omni-mc\bin\64bit`, если её ещё нет.
+5. Скопируйте файл `omni-mc.dll` в эту папку.
+6. Запустите OBS Studio. Плагин появится в меню **Сервис → Omni MC — Музыкальный плеер**.
+
+Для портативной версии OBS поместите `omni-mc.dll` в `<папка OBS>\obs-plugins\64bit`.
+
+## Первый запуск
+
+1. Откройте панель **Omni MC** через меню **Сервис → Omni MC — Музыкальный плеер**.
+2. Запустите музыку и выберите приложение в списке либо оставьте автоматический выбор.
+3. Настройте внешний вид и нажмите **Добавить плеер в источник**.
 
 <details>
 <summary><strong>Полный список возможностей плагина</strong></summary>
@@ -103,13 +112,22 @@ Omni MC is a music player for OBS Studio. It reads the current track from Window
   <a href="https://www.youtube.com/watch?v=q8dy48X8Nd8"><strong>▶ Watch the Omni MC template showcase on YouTube</strong></a>
 </p>
 
-## Installation and usage
+## Installation
 
-1. Download the ready-to-use archive from the [Releases](https://github.com/xKAPITOSHKAx/Omni-mc/releases) page.
-2. Install the plugin files and restart OBS Studio.
-3. Open the **Omni MC** dock or select **Tools → Omni MC — Music Player**.
-4. Start playing music and select an app, or keep automatic selection enabled.
-5. Customize the appearance and click **Add player to source**.
+1. Close OBS Studio.
+2. Download the Windows x64 archive from the [Releases](https://github.com/xKAPITOSHKAx/Omni-MC/releases) page.
+3. Extract the archive.
+4. Create `C:\ProgramData\obs-studio\plugins\omni-mc\bin\64bit` if it does not already exist.
+5. Copy `omni-mc.dll` into that folder.
+6. Start OBS Studio. The plugin will appear under **Tools → Omni MC — Music Player**.
+
+For a portable OBS installation, place `omni-mc.dll` in `<OBS folder>\obs-plugins\64bit`.
+
+## First launch
+
+1. Open the **Omni MC** dock through **Tools → Omni MC — Music Player**.
+2. Start playing music and select an app, or keep automatic selection enabled.
+3. Customize the appearance and click **Add player to source**.
 
 <details>
 <summary><strong>Full plugin feature list</strong></summary>
