@@ -20,6 +20,7 @@ struct Profile {
  unsigned coverRevision=0,coverRetryAttempt=0;long long coverRetryAt=0;bool coverRetryPending=false;int layoutWidth=0,layoutHeight=0;
  long long seekMs=-1;std::string seekKey;
  int audioVolume=-1,audioMute=-1;std::string audioSession;
+ P visualizerSource=nullptr;std::string visualizerSourceName;std::array<std::atomic<float>,21> visualizerBands{};std::atomic<long long> visualizerUpdated{0};
 };
 static std::map<std::string,std::shared_ptr<Profile>> profiles;
 static std::mutex profileDiskMutex;
@@ -36,8 +37,8 @@ static void profileDimensions(const std::shared_ptr<Profile>&p,int&w,int&h)
  bool adapt=!obs_data_has_user_value(d,"adaptiveSize")||obs_data_get_bool(d,"adaptiveSize"),visible=!obs_data_has_user_value(d,"progressVisible")||obs_data_get_bool(d,"progressVisible");
  if(adapt&&!visible){if(skin=="compact")h-=36;else if(skin=="split")h-=20;else if(skin=="orbit")h-=8;else if(skin!="cover")h-=30;}
  bool coverHidden=skin!="compact-bar"&&skin!="cover"&&skin!="vinyl"&&skin!="orbit"&&skin!="prism"&&skin!="eclipse"&&obs_data_has_user_value(d,"showTrackCover")&&!obs_data_get_bool(d,"showTrackCover");
- long long defaultCoverScale=skin=="compact"||skin=="prism"?80:skin=="cassette"?50:skin=="cosmos"||skin=="gargantua"?110:100,coverValue=obs_data_get_int(d,"coverScale"),coverScale=std::clamp<long long>(coverValue?coverValue:defaultCoverScale,50,150);int coverSize=(int)std::lround(150.0*coverScale/100.0);
- if(!coverHidden){if(skin=="compact")h=std::max(h,coverSize+74);else if(skin=="cover"){w=coverSize+60;h=coverSize+64;}else if(skin=="prism")h=std::max(h,coverSize+70);else if(skin=="cassette")h=std::max(h,coverSize+266);else if(skin=="neon")h=std::max(h,coverSize+92);else if(skin=="vector")h=std::max(h,coverSize+76);else if(skin=="pulse")h=std::max(h,coverSize+112);else if(skin=="cosmos"||skin=="gargantua")h=std::max(h,coverSize+122);}
+ long long defaultCoverScale=skin=="compact"||skin=="prism"?80:skin=="cassette"?50:skin=="cosmos"||skin=="gargantua"||skin=="rhythm"?110:100,coverValue=obs_data_get_int(d,"coverScale"),coverScale=std::clamp<long long>(coverValue?coverValue:defaultCoverScale,50,150);int coverSize=(int)std::lround(150.0*coverScale/100.0);
+ if(!coverHidden){if(skin=="compact")h=std::max(h,coverSize+74);else if(skin=="cover"){w=coverSize+60;h=coverSize+64;}else if(skin=="prism")h=std::max(h,coverSize+70);else if(skin=="cassette")h=std::max(h,coverSize+266);else if(skin=="neon")h=std::max(h,coverSize+92);else if(skin=="vector")h=std::max(h,coverSize+76);else if(skin=="pulse")h=std::max(h,coverSize+112);else if(skin=="rhythm")h=std::max(h,coverSize+55);else if(skin=="cosmos"||skin=="gargantua")h=std::max(h,coverSize+122);}
  if(coverHidden){if(skin=="compact")w-=112;else if(skin=="orbit")w-=208;else if(skin=="prism")w-=104;else if(skin!="cassette")h=180;}
  if(coverHidden&&layoutW>0&&layoutH>0){w=layoutW;h=layoutH;}
  auto factor=[&](const char*key){auto value=obs_data_get_int(d,key);return std::clamp<long long>(value?value:100,50,150)/100.0;};w=(int)std::lround(w*factor("widgetWidthScale"))+100;h=(int)std::lround(h*factor("widgetHeightScale"))+100;if(coverHidden)h=std::max(200,h);obs_data_release(d);

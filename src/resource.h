@@ -7,3 +7,4 @@
 #define IDR_TIMELINE_JS 105
 #define IDR_STYLE_CSS 106
 #define IDR_SKINS_CSS 107
+#define IDR_I18N_JS 108

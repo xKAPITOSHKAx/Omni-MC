@@ -2,6 +2,7 @@
 #define NOMINMAX
 #include <winsock2.h>
 #include <windows.h>
+#include <winhttp.h>
 #include <shellapi.h>
 #include <shobjidl.h>
 #include <propkey.h>
@@ -19,9 +20,12 @@
 #include <sstream>
 #include <filesystem>
 #include <vector>
+#include <array>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include "resource.h"
+#pragma comment(lib,"winhttp.lib")
 using namespace winrt;
 using namespace Windows::Media::Control;
 using namespace Windows::Storage::Streams;
@@ -64,6 +68,12 @@ API(unsigned,obs_source_get_width,P);
 API(unsigned,obs_source_get_height,P);
 API(unsigned,obs_source_get_output_flags,P);
 API(void,obs_source_video_render,P);
+struct CapturedAudio {unsigned char*data[8];unsigned frames;unsigned long long timestamp;};
+using AudioCaptureCallback=void(*)(P,P,const CapturedAudio*,bool);
+API(void,obs_source_add_audio_capture_callback,P,AudioCaptureCallback,P);
+API(void,obs_source_remove_audio_capture_callback,P,AudioCaptureCallback,P);
+API(P,obs_get_audio);
+API(unsigned,audio_output_get_sample_rate,P);
 API(void,obs_enter_graphics);
 API(void,obs_leave_graphics);
 API(P,gs_texrender_create,int,int);
@@ -81,13 +91,15 @@ API(void,gs_clear,unsigned,const float*,float,unsigned char);
 API(void,gs_blend_state_push);
 API(void,gs_blend_state_pop);
 API(void,gs_reset_blend_state);
-static std::atomic<bool> running{false},capturePending{false},sourcePending{false};
+static std::atomic<bool> running{false},capturePending{false},sourcePending{false},englishUi{false};
 static SOCKET listener=INVALID_SOCKET;
-static std::thread serverThread,mediaThread;
+static std::thread serverThread,mediaThread,updateThread;
 static std::mutex mutex;
 static fs::path root,configPath;
-static constexpr const char*pluginVersion="1.3.5";
-static std::string settings,media="{\"sessions\":[],\"title\":\"Нет названия\",\"artist\":\"Исполнитель\",\"playing\":false}",sources="[]",systemFontList="[]",cover,background,mediaCommand;
+static constexpr const char*pluginVersion="1.3.6";
+static constexpr const wchar_t*updateApiPath=L"/repos/xKAPITOSHKAx/Omni-mc/releases/latest";
+static constexpr const wchar_t*updatePage=L"https://github.com/xKAPITOSHKAx/Omni-mc/releases/latest";
+static std::string settings,media="{\"sessions\":[],\"title\":\"\",\"artist\":\"\",\"playing\":false}",sources="[]",audioSources="[]",systemFontList="[]",cover,background,mediaCommand;
 #ifdef OMNI_MC_TEST
 static unsigned short port=17844;
 #else
@@ -108,8 +120,64 @@ struct QCef {
 static QCef* cef=nullptr;
 static P settingsWidget=nullptr;
 static bool dockRegistered=false;
+static const wchar_t*ui(const wchar_t*ru,const wchar_t*en){return englishUi?en:ru;}
+static const char*ui(const char*ru,const char*en){return englishUi?en:ru;}
 static std::string json(const std::string &s){std::string r="\"";for(unsigned char c:s){if(c=='"'||c=='\\'){r+='\\';r+=c;}else if(c<32){char b[7];sprintf_s(b,"\\u%04x",c);r+=b;}else r+=c;}return r+'"';}
 static std::string wideUtf8(const std::wstring&w){if(w.empty())return {};int size=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,w.data(),(int)w.size(),nullptr,0,nullptr,nullptr);if(!size)return {};std::string result((size_t)size,'\0');WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,w.data(),(int)w.size(),result.data(),size,nullptr,nullptr);return result;}
+static std::wstring utf8Wide(const std::string&s){if(s.empty())return {};int size=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,s.data(),(int)s.size(),nullptr,0);if(!size)return {};std::wstring result((size_t)size,L'\0');MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,s.data(),(int)s.size(),result.data(),size);return result;}
+static bool parseVersion(const std::string&text,int parts[4])
+{
+ size_t position=!text.empty()&&(text[0]=='v'||text[0]=='V')?1:0;int index=0,value=0;bool digit=false;
+ for(;position<text.size();++position){char c=text[position];if(c>='0'&&c<='9'){digit=true;if(value>1000000)return false;value=value*10+(c-'0');}else if(c=='.'&&digit&&index<3){parts[index++]=value;value=0;digit=false;}else if((c=='-'||c=='+')&&digit)break;else return false;}
+ if(!digit)return false;parts[index]=value;return true;
+}
+static bool newerVersion(const std::string&latest)
+{
+ int available[4]{},installed[4]{};if(!parseVersion(latest,available)||!parseVersion(pluginVersion,installed))return false;
+ for(int i=0;i<4;i++){if(available[i]!=installed[i])return available[i]>installed[i];}return false;
+}
+static std::string jsonField(const std::string&body,const char*name)
+{
+ std::string key="\""+std::string(name)+"\"";auto position=body.find(key);if(position==std::string::npos)return {};position=body.find(':',position+key.size());if(position==std::string::npos)return {};position=body.find('"',position+1);if(position==std::string::npos)return {};auto end=body.find('"',position+1);return end==std::string::npos?std::string():body.substr(position+1,end-position-1);
+}
+static std::string latestReleaseVersion()
+{
+ std::wstring agent=L"Omni-MC/"+utf8Wide(pluginVersion);HINTERNET session=WinHttpOpen(agent.c_str(),WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,WINHTTP_NO_PROXY_NAME,WINHTTP_NO_PROXY_BYPASS,0);if(!session)return {};
+ WinHttpSetTimeouts(session,3000,3000,3000,5000);HINTERNET connection=WinHttpConnect(session,L"api.github.com",INTERNET_DEFAULT_HTTPS_PORT,0);HINTERNET request=connection?WinHttpOpenRequest(connection,L"GET",updateApiPath,nullptr,WINHTTP_NO_REFERER,WINHTTP_DEFAULT_ACCEPT_TYPES,WINHTTP_FLAG_SECURE|WINHTTP_FLAG_REFRESH):nullptr;
+ std::string body;const wchar_t*headers=L"Accept: application/vnd.github+json\r\nX-GitHub-Api-Version: 2022-11-28\r\n";
+ if(request&&WinHttpSendRequest(request,headers,(DWORD)-1L,WINHTTP_NO_REQUEST_DATA,0,0,0)&&WinHttpReceiveResponse(request,nullptr)){DWORD status=0,length=sizeof(status);if(WinHttpQueryHeaders(request,WINHTTP_QUERY_STATUS_CODE|WINHTTP_QUERY_FLAG_NUMBER,WINHTTP_HEADER_NAME_BY_INDEX,&status,&length,WINHTTP_NO_HEADER_INDEX)&&status==200){for(;;){DWORD available=0;if(!WinHttpQueryDataAvailable(request,&available)||!available||body.size()+available>262144)break;size_t offset=body.size();body.resize(offset+available);DWORD read=0;if(!WinHttpReadData(request,body.data()+offset,available,&read)){body.clear();break;}body.resize(offset+read);if(!read)break;}}}
+ if(request)WinHttpCloseHandle(request);if(connection)WinHttpCloseHandle(connection);WinHttpCloseHandle(session);return jsonField(body,"tag_name");
+}
+static fs::path ignoredUpdatePath(){return configPath.parent_path()/"ignored-update.txt";}
+static bool updateIgnored(const std::string&version){std::ifstream file(ignoredUpdatePath(),std::ios::binary);std::string ignored;std::getline(file,ignored);return ignored==version;}
+static void ignoreUpdate(const std::string&version){std::error_code error;fs::create_directories(configPath.parent_path(),error);std::ofstream file(ignoredUpdatePath(),std::ios::binary|std::ios::trunc);file.write(version.data(),(std::streamsize)version.size());}
+struct UpdateDialogState{HWND checkbox=nullptr;int result=IDNO;bool ignored=false;HBRUSH background=nullptr;HFONT font=nullptr,titleFont=nullptr;};
+static LRESULT CALLBACK updateDialogProc(HWND window,UINT message,WPARAM wParam,LPARAM lParam)
+{
+ auto state=reinterpret_cast<UpdateDialogState*>(GetWindowLongPtrW(window,GWLP_USERDATA));if(message==WM_NCCREATE){state=static_cast<UpdateDialogState*>(reinterpret_cast<CREATESTRUCTW*>(lParam)->lpCreateParams);SetWindowLongPtrW(window,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(state));}
+ if(state&&message==WM_ERASEBKGND){RECT area;GetClientRect(window,&area);FillRect((HDC)wParam,&area,state->background);return 1;}
+ if(state&&(message==WM_CTLCOLORSTATIC||message==WM_CTLCOLORBTN)){HDC dc=(HDC)wParam;SetTextColor(dc,RGB(235,235,235));SetBkMode(dc,TRANSPARENT);return (LRESULT)state->background;}
+ if(state&&message==WM_DRAWITEM){auto item=reinterpret_cast<DRAWITEMSTRUCT*>(lParam);if(item&&(item->CtlID==1001||item->CtlID==1002)){COLORREF fill=item->CtlID==1001?RGB(54,112,180):RGB(58,58,61);if(item->itemState&ODS_SELECTED)fill=RGB(44,86,132);HBRUSH brush=CreateSolidBrush(fill);FillRect(item->hDC,&item->rcItem,brush);DeleteObject(brush);HBRUSH border=CreateSolidBrush(RGB(92,92,96));FrameRect(item->hDC,&item->rcItem,border);DeleteObject(border);SetTextColor(item->hDC,RGB(245,245,245));SetBkMode(item->hDC,TRANSPARENT);wchar_t text[64]{};GetWindowTextW(item->hwndItem,text,(int)std::size(text));DrawTextW(item->hDC,text,-1,&item->rcItem,DT_CENTER|DT_VCENTER|DT_SINGLELINE);if(item->itemState&ODS_FOCUS){RECT focus=item->rcItem;InflateRect(&focus,-4,-4);DrawFocusRect(item->hDC,&focus);}return TRUE;}}
+ if(state&&(message==WM_CLOSE||(message==WM_COMMAND&&(LOWORD(wParam)==1001||LOWORD(wParam)==1002)))){state->result=message==WM_COMMAND&&LOWORD(wParam)==1001?IDYES:IDNO;state->ignored=state->checkbox&&SendMessageW(state->checkbox,BM_GETCHECK,0,0)==BST_CHECKED;DestroyWindow(window);return 0;}return DefWindowProcW(window,message,wParam,lParam);
+}
+static int updateDialog(const std::wstring&content,bool&ignored)
+{
+ HMODULE module=nullptr;GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,reinterpret_cast<LPCWSTR>(&updateDialog),&module);const wchar_t*className=L"OmniMCUpdateDialog";WNDCLASSW type{};type.lpfnWndProc=updateDialogProc;type.hInstance=module;type.hCursor=LoadCursorW(nullptr,MAKEINTRESOURCEW(32512));type.hbrBackground=(HBRUSH)(COLOR_WINDOW+1);type.lpszClassName=className;if(!RegisterClassW(&type)&&GetLastError()!=ERROR_CLASS_ALREADY_EXISTS)return IDCANCEL;
+ HWND owner=GetActiveWindow();UpdateDialogState state;state.background=CreateSolidBrush(RGB(30,30,32));state.font=CreateFontW(-16,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");state.titleFont=CreateFontW(-20,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");int width=520,height=250,x=(GetSystemMetrics(SM_CXSCREEN)-width)/2,y=(GetSystemMetrics(SM_CYSCREEN)-height)/2;HWND window=CreateWindowExW(WS_EX_DLGMODALFRAME,className,ui(L"Omni MC — Обновление",L"Omni MC — Update"),WS_POPUP|WS_CAPTION|WS_SYSMENU,x,y,width,height,owner,nullptr,module,&state);if(!window){DeleteObject(state.background);DeleteObject(state.font);DeleteObject(state.titleFont);return IDCANCEL;}
+ auto dwm=LoadLibraryW(L"dwmapi.dll");if(dwm){auto attribute=reinterpret_cast<HRESULT(WINAPI*)(HWND,DWORD,LPCVOID,DWORD)>(GetProcAddress(dwm,"DwmSetWindowAttribute"));if(attribute){BOOL dark=TRUE;if(FAILED(attribute(window,20,&dark,sizeof(dark))))attribute(window,19,&dark,sizeof(dark));}FreeLibrary(dwm);}
+ auto control=[&](const wchar_t*kind,const wchar_t*text,DWORD style,int cx,int cy,int cw,int ch,int id,HFONT font=nullptr){HWND item=CreateWindowExW(0,kind,text,WS_CHILD|WS_VISIBLE|style,cx,cy,cw,ch,window,(HMENU)(INT_PTR)id,module,nullptr);SendMessageW(item,WM_SETFONT,(WPARAM)(font?font:state.font),TRUE);return item;};
+ control(L"STATIC",ui(L"Доступно обновление Omni MC",L"Omni MC update available"),SS_LEFT,28,24,455,30,0,state.titleFont);control(L"STATIC",content.c_str(),SS_LEFT,28,66,455,48,0);state.checkbox=control(L"BUTTON",ui(L"Больше не напоминать об этой версии",L"Don't remind me about this version again"),BS_AUTOCHECKBOX|WS_TABSTOP,28,124,430,28,1003);control(L"BUTTON",ui(L"Открыть страницу",L"Open page"),BS_OWNERDRAW|WS_TABSTOP,250,174,140,34,1001);control(L"BUTTON",ui(L"Позже",L"Later"),BS_OWNERDRAW|WS_TABSTOP,400,174,82,34,1002);
+ if(owner)EnableWindow(owner,FALSE);ShowWindow(window,SW_SHOW);SetForegroundWindow(window);MSG message;while(IsWindow(window)){BOOL result=GetMessageW(&message,nullptr,0,0);if(result<=0){if(result==0)PostQuitMessage((int)message.wParam);break;}if(!IsDialogMessageW(window,&message)){TranslateMessage(&message);DispatchMessageW(&message);}}if(IsWindow(window))DestroyWindow(window);if(owner){EnableWindow(owner,TRUE);SetForegroundWindow(owner);}DeleteObject(state.background);DeleteObject(state.font);DeleteObject(state.titleFont);ignored=state.ignored;return state.result;
+}
+static void showUpdateNotice(P pointer)
+{
+ std::unique_ptr<std::string>latest(static_cast<std::string*>(pointer));if(!running||!latest)return;std::wstring content=std::wstring(ui(L"Новая версия: ",L"New version: "))+utf8Wide(*latest)+ui(L"\nТекущая версия: v",L"\nCurrent version: v")+utf8Wide(pluginVersion);
+ bool ignored=false;int button=updateDialog(content,ignored);if(ignored)ignoreUpdate(*latest);if(button==IDYES)ShellExecuteW(nullptr,L"open",updatePage,nullptr,nullptr,SW_SHOWNORMAL);
+}
+static void checkForUpdates()
+{
+ std::string latest=latestReleaseVersion();if(!latest.empty())blog(200,"[omni-mc] Latest GitHub release: %s; installed: %s",latest.c_str(),pluginVersion);if(running&&newerVersion(latest)&&!updateIgnored(latest))obs_queue_task(0,showUpdateNotice,new std::string(latest),true);
+}
 struct SessionWindowLookup{std::wstring appId;std::string executable;};
 static BOOL CALLBACK findSessionWindow(HWND window,LPARAM parameter){
  auto&lookup=*reinterpret_cast<SessionWindowLookup*>(parameter);IPropertyStore*store=nullptr;PROPVARIANT value;PropVariantInit(&value);
@@ -128,10 +196,43 @@ static std::string read(const fs::path&p){std::ifstream f(p,std::ios::binary);re
 static std::string webResource(int id){HMODULE module=nullptr;if(!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,reinterpret_cast<LPCWSTR>(&running),&module))return {};HRSRC resource=FindResourceW(module,MAKEINTRESOURCEW(id),MAKEINTRESOURCEW(10));if(!resource)return {};HGLOBAL loaded=LoadResource(module,resource);DWORD size=SizeofResource(module,resource);const char*bytes=loaded?static_cast<const char*>(LockResource(loaded)):nullptr;return bytes&&size?std::string(bytes,size):std::string();}
 static long long now(){return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();}
 static std::string base(){return "http://127.0.0.1:"+std::to_string(port);}
-static void skinSize(const std::string&skin,int&w,int&h){w=720;h=240;if(skin=="compact"){w=720;h=200;}else if(skin=="compact-bar"){w=768;h=90;}else if(skin=="cover"){w=210;h=214;}else if(skin=="vinyl"){w=360;h=380;}else if(skin=="glass"){w=360;h=420;}else if(skin=="poster"){w=360;h=360;}else if(skin=="cinematic"){w=640;h=360;}else if(skin=="split"){w=360;h=460;}else if(skin=="orbit"){w=750;h=280;}else if(skin=="cassette"){w=680;h=360;}else if(skin=="prism"){w=600;h=220;}else if(skin=="eclipse"){w=764;h=278;}else if(skin=="neon"){w=714;h=249;}else if(skin=="vector"){w=680;h=230;}else if(skin=="pulse"){w=700;h=270;}else if(skin=="cosmos"||skin=="gargantua"){w=720;h=280;}}
+static void skinSize(const std::string&skin,int&w,int&h){w=720;h=240;if(skin=="compact"){w=720;h=200;}else if(skin=="compact-bar"){w=768;h=90;}else if(skin=="cover"){w=210;h=214;}else if(skin=="vinyl"){w=360;h=380;}else if(skin=="glass"){w=360;h=420;}else if(skin=="poster"){w=360;h=360;}else if(skin=="cinematic"){w=640;h=360;}else if(skin=="split"){w=360;h=460;}else if(skin=="orbit"){w=750;h=280;}else if(skin=="cassette"){w=680;h=360;}else if(skin=="prism"){w=600;h=220;}else if(skin=="eclipse"){w=764;h=278;}else if(skin=="neon"){w=714;h=249;}else if(skin=="vector"){w=680;h=230;}else if(skin=="pulse"){w=700;h=270;}else if(skin=="rhythm"){w=640;h=220;}else if(skin=="cosmos"||skin=="gargantua"){w=720;h=280;}}
 #include "profiles.hpp"
 #include "backdrop.hpp"
 #include "audio-volume.hpp"
+static std::atomic<unsigned> visualizerSampleRate{48000};
+static void captureVisualizer(P pointer,P,const CapturedAudio*audio,bool muted)
+{
+ auto*profile=static_cast<Profile*>(pointer);if(!profile||!audio||muted||audio->frames<32){if(profile)for(auto&band:profile->visualizerBands)band.store(0,std::memory_order_relaxed);return;}
+ std::array<const float*,8> channels{};size_t channelCount=0;for(auto*plane:audio->data)if(plane)channels[channelCount++]=reinterpret_cast<const float*>(plane);if(!channelCount){for(auto&band:profile->visualizerBands)band.store(0,std::memory_order_relaxed);return;}
+ unsigned count=std::min(audio->frames,1024u),offset=audio->frames-count,rate=std::max(8000u,visualizerSampleRate.load(std::memory_order_relaxed));constexpr double pi=3.14159265358979323846;
+ for(size_t bandIndex=0;bandIndex<profile->visualizerBands.size();++bandIndex){double center=65.0*std::pow(12000.0/65.0,(double)bandIndex/(profile->visualizerBands.size()-1)),magnitude=0;
+  for(double factor:{.84,1.0,1.19}){double frequency=std::min(center*factor,rate*.46),omega=2*pi*frequency/rate,coefficient=2*std::cos(omega);
+   for(size_t channel=0;channel<channelCount;++channel){double s0=0,s1=0,s2=0;const float*samples=channels[channel];
+    for(unsigned i=0;i<count;++i){double window=.5-.5*std::cos(2*pi*i/(count-1)),sample=std::clamp((double)samples[offset+i],-1.0,1.0)*window;s0=sample+coefficient*s1-s2;s2=s1;s1=s0;}
+    magnitude=std::max(magnitude,2*std::sqrt(std::max(0.0,s1*s1+s2*s2-coefficient*s1*s2))/count);
+   }
+  }
+  double db=20*std::log10(std::max(magnitude,1e-7)),value=std::pow(std::clamp((db+68.0)/56.0,0.0,1.0),.72);float previous=profile->visualizerBands[bandIndex].load(std::memory_order_relaxed),next=(float)(value>previous?previous*.28+value*.72:previous*.76+value*.24);profile->visualizerBands[bandIndex].store(next,std::memory_order_relaxed);
+ }
+ profile->visualizerUpdated.store(now(),std::memory_order_relaxed);
+}
+static void syncProfileVisualizer(P pointer)
+{
+ std::unique_ptr<std::string> id(static_cast<std::string*>(pointer));std::shared_ptr<Profile> profile;std::string wanted;P previous=nullptr;
+ {std::lock_guard lock(mutex);profile=profileLocked(*id);if(!profile)return;P data=obs_data_create_from_json(profile->cfg.c_str());wanted=obs_data_get_string(data,"rhythmAudioSource");obs_data_release(data);if(profile->visualizerSource&&profile->visualizerSourceName==wanted)return;previous=profile->visualizerSource;profile->visualizerSource=nullptr;profile->visualizerSourceName.clear();}
+ if(previous){obs_source_remove_audio_capture_callback(previous,captureVisualizer,profile.get());obs_source_release(previous);}for(auto&band:profile->visualizerBands)band.store(0,std::memory_order_relaxed);profile->visualizerUpdated.store(0,std::memory_order_relaxed);
+ if(wanted.empty())return;P source=obs_get_source_by_name(wanted.c_str());if(!source)return;if(!(obs_source_get_output_flags(source)&2)){obs_source_release(source);return;}obs_source_add_audio_capture_callback(source,captureVisualizer,profile.get());{std::lock_guard lock(mutex);profile->visualizerSource=source;profile->visualizerSourceName=wanted;}
+}
+static void detachVisualizers()
+{
+ std::vector<std::shared_ptr<Profile>> work;{std::lock_guard lock(mutex);for(auto&entry:profiles)work.push_back(entry.second);}
+ for(auto&profile:work){P source=nullptr;{std::lock_guard lock(mutex);source=profile->visualizerSource;profile->visualizerSource=nullptr;profile->visualizerSourceName.clear();}if(source){obs_source_remove_audio_capture_callback(source,captureVisualizer,profile.get());obs_source_release(source);}}
+}
+static std::string visualizerJson(const Profile&profile)
+{
+ bool available=profile.visualizerSource&&now()-profile.visualizerUpdated.load(std::memory_order_relaxed)<600;std::string result="{\"available\":"+std::string(available?"true":"false")+",\"bands\":[";for(size_t i=0;i<profile.visualizerBands.size();++i){if(i)result+=',';float value=available?profile.visualizerBands[i].load(std::memory_order_relaxed):0;result+=std::to_string(std::clamp(value,0.f,1.f));}return result+"]}";
+}
 static bool listSource(P out,P source)
 {
  std::string name=obs_source_get_name(source),id=obs_source_get_id(source);
@@ -140,18 +241,25 @@ static bool listSource(P out,P source)
   static_cast<std::vector<std::string>*>(out)->push_back(name);
  return true;
 }
+static bool listAudioSource(P out,P source)
+{
+ std::string name=obs_source_get_name(source);if(name.rfind("Omni MC",0)!=0&&(obs_source_get_output_flags(source)&2))static_cast<std::vector<std::string>*>(out)->push_back(name);return true;
+}
 static void refreshSources(P)
 {
  if(!running){sourcePending=false;return;}
- std::vector<std::string> names;
+ std::vector<std::string> names,audioNames;
  obs_enum_scenes(listSource,&names);
  obs_enum_sources(listSource,&names);
+ obs_enum_sources(listAudioSource,&audioNames);
  std::sort(names.begin(),names.end());
  names.erase(std::unique(names.begin(),names.end()),names.end());
+ std::sort(audioNames.begin(),audioNames.end());audioNames.erase(std::unique(audioNames.begin(),audioNames.end()),audioNames.end());
  std::string r="[";
  for(auto&name:names){if(r.size()>1)r+=',';r+=json(name);}
  r+=']';
- {std::lock_guard lock(mutex);sources=r;}
+ std::string audio="[";for(auto&name:audioNames){if(audio.size()>1)audio+=',';audio+=json(name);}audio+=']';
+ {std::lock_guard lock(mutex);sources=r;audioSources=audio;}
  attachBackdrop();
  sourcePending=false;
 }
@@ -168,7 +276,7 @@ static void createScenePlayer(P sceneSource,bool add){
   attachBackdropSource(source);syncShadowSource(source,profile);obs_source_release(source);saveProfile(profile);
  }
 }
-static bool prepareScene(P,P scene){createScenePlayer(scene,false);return true;}
+static bool prepareScene(P,P scene){createScenePlayer(scene,false);auto profile=ensureProfile(scene);syncProfileVisualizer(new std::string(profile->id));return true;}
 static void syncScenes(P){if(!running)return;obs_enum_scenes(prepareScene,nullptr);P scene=obs_frontend_get_current_scene();if(scene){auto p=ensureProfile(scene);{std::lock_guard lock(mutex);activeProfile=p->id;}obs_source_release(scene);}}
 static void addPlayer(P pointer){std::unique_ptr<std::string> id(static_cast<std::string*>(pointer));if(!running)return;P scene=id&&!id->empty()?obs_get_source_by_uuid(id->c_str()):obs_frontend_get_current_scene();if(scene){createScenePlayer(scene,true);obs_source_release(scene);}}
 static void mediaLoop(){init_apartment(apartment_type::multi_threaded);try{auto manager=GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();std::map<std::string,std::pair<std::string,std::string>> coverCache;std::map<std::string,std::pair<std::string,unsigned>> coverRetryDone;std::map<std::string,std::string> sessionExecutableCache;auto loadCover=[](const auto&props){std::string art;try{auto thumb=props.Thumbnail();if(thumb){auto stream=thumb.OpenReadAsync().get();if(stream.Size()<8*1024*1024){DataReader reader(stream);auto count=reader.LoadAsync((unsigned)stream.Size()).get();std::vector<unsigned char> bytes(count);reader.ReadBytes(bytes);art.assign((char*)bytes.data(),bytes.size());}}}catch(const hresult_error&e){blog(300,"[omni-mc] Track cover: %s",to_string(e.message()).c_str());}return art;};
@@ -191,7 +299,7 @@ auto props=found->second.props;auto timeline=found->second.timeline;bool playing
  double position=std::chrono::duration<double>(timeline.Position()-timeline.StartTime()).count();bool legacyFallback=false;
  if(id=="A025C540.Yandex.Music_vfvw9svesycw6!App"&&duration<=0){if(!legacyTimelineRead){legacyTimeline=legacyYandexTimeline();legacyTimelineRead=true;}if(legacyTimeline.available){duration=legacyTimeline.duration;position=legacyTimeline.position;legacyFallback=true;}}
  if(playing&&!legacyFallback){auto rate=playback(selected).PlaybackRate();double speed=rate?rate.Value():1.0;position+=std::max(0.0,std::chrono::duration<double>(clock::now()-timeline.LastUpdatedTime()).count())*speed;}
-auto playbackRate=playback(selected).PlaybackRate();state+=",\"rate\":"+std::to_string(playbackRate?playbackRate.Value():1.0);state+=",\"session\":"+json(id)+",\"title\":"+json(title.empty()?"Нет названия":title)+",\"artist\":"+json(artist.empty()?"Исполнитель":artist)+",\"album\":"+json(to_string(props.AlbumTitle()))+",\"playing\":"+(playing?"true":"false")+",\"duration\":"+std::to_string(std::max(0.0,duration))+",\"position\":"+std::to_string(std::clamp(position,0.0,std::max(0.0,duration)))+",\"coverKey\":"+json(key);}else{lastKey.clear();profile->coverRetryAttempt=0;profile->coverRetryPending=false;profile->coverRetryAt=0;state+=",\"title\":\"Нет названия\",\"artist\":\"Исполнитель\",\"playing\":false,\"duration\":0,\"position\":0,\"coverKey\":\"\"";std::lock_guard lock(mutex);if(!profile->cover.empty()){profile->cover.clear();++profile->coverRevision;}profile->overlayUntil=0;}unsigned coverVersion;{std::lock_guard lock(mutex);coverVersion=profile->coverRevision;}state+=",\"coverRevision\":"+std::to_string(coverVersion)+",\"updated\":"+std::to_string(now())+"}";{std::lock_guard lock(mutex);profile->media=state;}}catch(const hresult_error&e){blog(300,"[omni-mc] Media session: %s",to_string(e.message()).c_str());std::lock_guard lock(mutex);profile->media="{\"sessions\":[],\"playing\":false,\"error\":"+json(to_string(e.message()))+"}";}}for(int i=0;i<3&&running;i++)Sleep(100);}}catch(const hresult_error&e){std::lock_guard lock(mutex);media="{\"sessions\":[],\"error\":"+json(to_string(e.message()))+"}";}clearApplicationVolumeCache();uninit_apartment();}
+auto playbackRate=playback(selected).PlaybackRate();state+=",\"rate\":"+std::to_string(playbackRate?playbackRate.Value():1.0);state+=",\"session\":"+json(id)+",\"title\":"+json(title)+",\"artist\":"+json(artist)+",\"album\":"+json(to_string(props.AlbumTitle()))+",\"playing\":"+(playing?"true":"false")+",\"duration\":"+std::to_string(std::max(0.0,duration))+",\"position\":"+std::to_string(std::clamp(position,0.0,std::max(0.0,duration)))+",\"coverKey\":"+json(key);}else{lastKey.clear();profile->coverRetryAttempt=0;profile->coverRetryPending=false;profile->coverRetryAt=0;state+=",\"title\":\"\",\"artist\":\"\",\"playing\":false,\"duration\":0,\"position\":0,\"coverKey\":\"\"";std::lock_guard lock(mutex);if(!profile->cover.empty()){profile->cover.clear();++profile->coverRevision;}profile->overlayUntil=0;}unsigned coverVersion;{std::lock_guard lock(mutex);coverVersion=profile->coverRevision;}state+=",\"coverRevision\":"+std::to_string(coverVersion)+",\"updated\":"+std::to_string(now())+"}";{std::lock_guard lock(mutex);profile->media=state;}}catch(const hresult_error&e){blog(300,"[omni-mc] Media session: %s",to_string(e.message()).c_str());std::lock_guard lock(mutex);profile->media="{\"sessions\":[],\"playing\":false,\"error\":"+json(to_string(e.message()))+"}";}}for(int i=0;i<3&&running;i++)Sleep(100);}}catch(const hresult_error&e){std::lock_guard lock(mutex);media="{\"sessions\":[],\"error\":"+json(to_string(e.message()))+"}";}clearApplicationVolumeCache();uninit_apartment();}
 static void reply(SOCKET c,const std::string&body,const char*type,int status=200){std::string head="HTTP/1.1 "+std::to_string(status)+(status==200?" OK":" Error")+"\r\nContent-Type: "+type+"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\nContent-Length: "+std::to_string(body.size())+"\r\n\r\n";std::string bytes=head+body;size_t sent=0;while(sent<bytes.size()){int n=send(c,bytes.data()+sent,(int)std::min<size_t>(65536,bytes.size()-sent),0);if(n<=0)break;sent+=n;}}
 static void serve(){while(running){fd_set set;FD_ZERO(&set);FD_SET(listener,&set);timeval tv{0,200000};if(select(0,&set,nullptr,nullptr,&tv)<=0)continue;SOCKET c=accept(listener,nullptr,nullptr);if(c==INVALID_SOCKET)continue;DWORD timeout=2000;setsockopt(c,SOL_SOCKET,SO_RCVTIMEO,(char*)&timeout,sizeof(timeout));setsockopt(c,SOL_SOCKET,SO_SNDTIMEO,(char*)&timeout,sizeof(timeout));std::string req;char b[4096];size_t end=std::string::npos,total=0;while(req.size()<65536){int n=recv(c,b,sizeof(b),0);if(n<=0)break;req.append(b,n);end=req.find("\r\n\r\n");if(end!=std::string::npos){std::string header=req.substr(0,end);std::transform(header.begin(),header.end(),header.begin(),[](unsigned char c){return (char)std::tolower(c);});auto p=header.find("content-length:");if(p!=std::string::npos)total=strtoul(header.c_str()+p+15,nullptr,10);if(req.size()>=end+4+total)break;}}std::istringstream line(req);std::string method,path,proto;line>>method>>path>>proto;std::string context;auto query=path.find('?');if(query!=std::string::npos){auto at=path.find("context=",query);if(at!=std::string::npos){at+=8;context=path.substr(at,path.find('&',at)-at);}}path=path.substr(0,query);std::string body=end==std::string::npos?"":req.substr(end+4,total);
 // Reject cross-origin writes and DNS-rebinding requests.
@@ -201,15 +309,17 @@ else if(method=="GET"&&(path=="/"||path=="/overlay")){
 #ifdef OMNI_MC_TEST
 if(path=="/")blog(200,"[omni-mc] Test: CEF settings page requested");
 #endif
-int id=path=="/"?IDR_SETTINGS_HTML:IDR_OVERLAY_HTML;std::string page=webResource(id);reply(c,page,"text/html; charset=utf-8",page.empty()?500:200);}
-else if(method=="GET"&&(path=="/app.js"||path=="/overlay.js"||path=="/timeline.js")){int id=path=="/app.js"?IDR_APP_JS:path=="/overlay.js"?IDR_OVERLAY_JS:IDR_TIMELINE_JS;std::string script=webResource(id);reply(c,script,"text/javascript; charset=utf-8",script.empty()?500:200);}
+ int id=path=="/"?IDR_SETTINGS_HTML:IDR_OVERLAY_HTML;std::string page=webResource(id);const std::string languageMarker="{{LANG}}";auto languageAt=page.find(languageMarker);if(languageAt!=std::string::npos)page.replace(languageAt,languageMarker.size(),englishUi?"en":"ru");if(path=="/"){const std::string marker="{{VERSION}}";auto at=page.find(marker);if(at!=std::string::npos)page.replace(at,marker.size(),pluginVersion);}reply(c,page,"text/html; charset=utf-8",page.empty()?500:200);}
+else if(method=="GET"&&(path=="/app.js"||path=="/overlay.js"||path=="/timeline.js"||path=="/i18n.js")){int id=path=="/app.js"?IDR_APP_JS:path=="/overlay.js"?IDR_OVERLAY_JS:path=="/timeline.js"?IDR_TIMELINE_JS:IDR_I18N_JS;std::string script=webResource(id);reply(c,script,"text/javascript; charset=utf-8",script.empty()?500:200);}
 else if(method=="GET"&&(path=="/style.css"||path=="/skins.css")){int id=path=="/style.css"?IDR_STYLE_CSS:IDR_SKINS_CSS;std::string style=webResource(id);reply(c,style,"text/css; charset=utf-8",style.empty()?500:200);}
 else if(method=="GET"&&path=="/state"){std::string r;{std::lock_guard lock(mutex);auto p=profileLocked(context);if(p){idleVisibilityLocked(*p);r="{\"context\":"+json(p->id)+",\"idleFade\":{\"from\":"+std::to_string(p->fadeFrom)+",\"to\":"+std::to_string(p->fadeTo)+",\"at\":"+std::to_string(p->fadeAt)+"},\"media\":"+p->media+",\"settings\":"+p->cfg+",\"testUntil\":"+std::to_string(p->testUntil)+",\"overlayUntil\":"+std::to_string(p->overlayUntil)+"}";}else r="{}";}reply(c,r,"application/json",r=="{}"?503:200);}
 else if(method=="GET"&&path=="/sources"){if(!sourcePending.exchange(true))obs_queue_task(0,refreshSources,nullptr,false);std::string r;{std::lock_guard lock(mutex);r=sources;}reply(c,r,"application/json");}
+else if(method=="GET"&&path=="/audio-sources"){if(!sourcePending.exchange(true))obs_queue_task(0,refreshSources,nullptr,false);std::string r;{std::lock_guard lock(mutex);r=audioSources;}reply(c,r,"application/json");}
+else if(method=="GET"&&path=="/visualizer"){std::string r;{std::lock_guard lock(mutex);auto p=profileLocked(context);r=p?visualizerJson(*p):"{}";}reply(c,r,"application/json",r=="{}"?503:200);}
 else if(method=="GET"&&path=="/fonts"){reply(c,systemFontList,"application/json");}
 else if(method=="GET"&&path=="/cover"){std::string r;{std::lock_guard lock(mutex);auto p=profileLocked(context);if(p)r=p->cover;}reply(c,r,"application/octet-stream");}
 else if(method=="POST"&&path=="/shadow-color"){P data=obs_data_create_from_json(body.c_str());std::string color=data?obs_data_get_string(data,"color"):"";if(data)obs_data_release(data);std::string id;bool valid=validRgbColor(color);if(valid){std::lock_guard lock(mutex);auto p=profileLocked(context);if(p){p->shadowCoverColor=color;id=p->id;}else valid=false;}if(valid){obs_queue_task(0,syncProfileShadow,new std::string(id),false);reply(c,"{}","application/json");}else reply(c,"{}","application/json",400);}
-else if(method=="POST"&&path=="/settings"){P d=obs_data_create_from_json(body.c_str());if(d){std::string normalized=obs_data_get_json(d);obs_data_release(d);std::shared_ptr<Profile> p;bool changed=false,resized=false;{std::lock_guard lock(mutex);p=profileLocked(context);if(p){P previous=obs_data_create_from_json(p->cfg.c_str()),next=obs_data_create_from_json(normalized.c_str());changed=std::string(obs_data_get_string(previous,"skin"))!=obs_data_get_string(next,"skin");for(const char*key:{"adaptiveSize","progressVisible","showTrackCover"}){bool a=!obs_data_has_user_value(previous,key)||obs_data_get_bool(previous,key),b=!obs_data_has_user_value(next,key)||obs_data_get_bool(next,key);changed=changed||a!=b;}for(const char*key:{"widgetWidthScale","widgetHeightScale","coverScale"}){auto a=obs_data_get_int(previous,key),b=obs_data_get_int(next,key);resized=resized||(a?a:100)!=(b?b:100);}obs_data_release(previous);obs_data_release(next);p->cfg=normalized;if(changed){p->layoutWidth=0;p->layoutHeight=0;}}}if(p){saveProfile(p);obs_queue_task(0,syncProfileShadow,new std::string(p->id),false);if(changed)obs_queue_task(0,refreshProfilePlayer,new std::string(p->id),false);else if(resized)obs_queue_task(0,applyMeasuredLayout,new std::string(p->id),false);reply(c,"{\"ok\":true}","application/json");}else reply(c,"{}","application/json",404);}else reply(c,"{}","application/json",400);}
+else if(method=="POST"&&path=="/settings"){P d=obs_data_create_from_json(body.c_str());if(d){std::string normalized=obs_data_get_json(d);obs_data_release(d);std::shared_ptr<Profile> p;bool changed=false,resized=false,visualizerChanged=false;{std::lock_guard lock(mutex);p=profileLocked(context);if(p){P previous=obs_data_create_from_json(p->cfg.c_str()),next=obs_data_create_from_json(normalized.c_str());changed=std::string(obs_data_get_string(previous,"skin"))!=obs_data_get_string(next,"skin");visualizerChanged=std::string(obs_data_get_string(previous,"rhythmAudioSource"))!=obs_data_get_string(next,"rhythmAudioSource");for(const char*key:{"adaptiveSize","progressVisible","showTrackCover"}){bool a=!obs_data_has_user_value(previous,key)||obs_data_get_bool(previous,key),b=!obs_data_has_user_value(next,key)||obs_data_get_bool(next,key);changed=changed||a!=b;}for(const char*key:{"widgetWidthScale","widgetHeightScale","coverScale"}){auto a=obs_data_get_int(previous,key),b=obs_data_get_int(next,key);resized=resized||(a?a:100)!=(b?b:100);}obs_data_release(previous);obs_data_release(next);p->cfg=normalized;if(changed){p->layoutWidth=0;p->layoutHeight=0;}}}if(p){saveProfile(p);obs_queue_task(0,syncProfileShadow,new std::string(p->id),false);if(visualizerChanged)obs_queue_task(0,syncProfileVisualizer,new std::string(p->id),false);if(changed)obs_queue_task(0,refreshProfilePlayer,new std::string(p->id),false);else if(resized)obs_queue_task(0,applyMeasuredLayout,new std::string(p->id),false);reply(c,"{\"ok\":true}","application/json");}else reply(c,"{}","application/json",404);}else reply(c,"{}","application/json",400);}
 else if(method=="POST"&&path=="/add"){std::string id;{std::lock_guard lock(mutex);auto p=profileLocked(context);if(p)id=p->id;}obs_queue_task(0,addPlayer,new std::string(id),false);reply(c,"{\"ok\":true}","application/json");}
 else if(method=="POST"&&path=="/test"){std::lock_guard lock(mutex);auto p=profileLocked(context);if(p)p->testUntil=now()+5000;reply(c,"{}","application/json");}
 else if(method=="POST"&&path=="/layout"){P data=obs_data_create_from_json(body.c_str());bool changed=false;std::string id;if(data){int w=(int)obs_data_get_int(data,"width"),h=(int)obs_data_get_int(data,"height");std::string skin=obs_data_get_string(data,"skin");obs_data_release(data);std::lock_guard lock(mutex);auto p=profileLocked(context);if(p&&w>=200&&w<=1000&&h>=100&&h<=800){P cfg=obs_data_create_from_json(p->cfg.c_str());bool adapt=!obs_data_has_user_value(cfg,"adaptiveSize")||obs_data_get_bool(cfg,"adaptiveSize");bool coverHidden=skin!="cover"&&skin!="vinyl"&&skin!="orbit"&&skin!="prism"&&skin!="eclipse"&&obs_data_has_user_value(cfg,"showTrackCover")&&!obs_data_get_bool(cfg,"showTrackCover");if(coverHidden&&skin==obs_data_get_string(cfg,"skin")&&(p->layoutWidth!=w||p->layoutHeight!=h)){p->layoutWidth=w;p->layoutHeight=h;changed=true;id=p->id;}obs_data_release(cfg);}}if(changed)obs_queue_task(0,applyMeasuredLayout,new std::string(id),false);reply(c,"{}","application/json");}
@@ -220,9 +330,11 @@ else reply(c,"{}","application/json",404);closesocket(c);}}
 static void openSettings(P){std::wstring url=to_hstring(base()).c_str();ShellExecuteW(nullptr,L"open",url.c_str(),nullptr,nullptr,SW_SHOWNORMAL);}
 static void stopWorkers()
 {
+ detachVisualizers();
  running=false;
  if(serverThread.joinable())serverThread.join();
  if(mediaThread.joinable())mediaThread.join();
+ if(updateThread.joinable())updateThread.join();
  if(listener!=INVALID_SOCKET){closesocket(listener);listener=INVALID_SOCKET;WSACleanup();}
 }
 static void graphicsBarrier(P){}
@@ -261,7 +373,9 @@ static void frontendEvent(int event,P)
 extern "C" __declspec(dllexport) void obs_module_set_pointer(P){}
 extern "C" __declspec(dllexport) unsigned obs_module_ver(){return (32u<<24)|(1u<<16);}
 extern "C" __declspec(dllexport) const char*obs_module_name(){return "Omni MC";}
-extern "C" __declspec(dllexport) const char*obs_module_description(){return "Музыкальный плеер Windows с браузерным оверлеем";}
+extern "C" __declspec(dllexport) const char*obs_module_description(){return ui("Музыкальный плеер Windows с браузерным оверлеем","Windows music player with a browser overlay");}
+extern "C" __declspec(dllexport) void obs_module_set_locale(const char*locale){englishUi=locale&&!(locale[0]=='r'&&locale[1]=='u');}
+extern "C" __declspec(dllexport) void obs_module_free_locale(){}
 extern "C" __declspec(dllexport) void obs_module_post_load()
 {
  syncScenes(nullptr);
@@ -304,14 +418,19 @@ if(std::wstring(GetCommandLineW()).find(L"--portable")==std::wstring::npos)retur
 #endif
 auto lib=GetModuleHandleW(L"obs.dll"),front=GetModuleHandleW(L"obs-frontend-api.dll");
 #define LOAD(name) name=reinterpret_cast<decltype(name)>(GetProcAddress(lib,#name));if(!name)return false;
-LOAD(obs_data_create_from_json) LOAD(obs_data_create) LOAD(obs_data_release) LOAD(obs_data_get_json) LOAD(obs_data_get_string) LOAD(obs_data_get_bool) LOAD(obs_data_get_int) LOAD(obs_data_get_double) LOAD(obs_data_set_string) LOAD(obs_data_set_bool) LOAD(obs_data_set_int) LOAD(obs_source_set_name) LOAD(obs_enum_sources) LOAD(obs_enum_scenes) LOAD(obs_get_source_by_name) LOAD(obs_source_get_name) LOAD(obs_source_get_id) LOAD(obs_source_release) LOAD(obs_source_create) LOAD(obs_source_update) LOAD(obs_scene_from_source) LOAD(obs_scene_add) LOAD(obs_scene_find_source) LOAD(obs_scene_enum_items) LOAD(obs_sceneitem_get_source) LOAD(obs_queue_task) LOAD(blog) LOAD(obs_source_get_width) LOAD(obs_source_get_height) LOAD(obs_source_get_output_flags) LOAD(obs_source_video_render) LOAD(obs_enter_graphics) LOAD(obs_leave_graphics) LOAD(gs_texrender_create) LOAD(gs_texrender_destroy) LOAD(gs_texrender_begin) LOAD(gs_texrender_end) LOAD(gs_texrender_get_texture) LOAD(gs_stagesurface_create) LOAD(gs_stagesurface_destroy) LOAD(gs_stage_texture) LOAD(gs_stagesurface_map) LOAD(gs_stagesurface_unmap) LOAD(gs_ortho) LOAD(gs_clear) LOAD(gs_blend_state_push) LOAD(gs_blend_state_pop) LOAD(gs_reset_blend_state)
+LOAD(obs_data_create_from_json) LOAD(obs_data_create) LOAD(obs_data_release) LOAD(obs_data_get_json) LOAD(obs_data_get_string) LOAD(obs_data_get_bool) LOAD(obs_data_get_int) LOAD(obs_data_get_double) LOAD(obs_data_set_string) LOAD(obs_data_set_bool) LOAD(obs_data_set_int) LOAD(obs_source_set_name) LOAD(obs_enum_sources) LOAD(obs_enum_scenes) LOAD(obs_get_source_by_name) LOAD(obs_source_get_name) LOAD(obs_source_get_id) LOAD(obs_source_release) LOAD(obs_source_create) LOAD(obs_source_update) LOAD(obs_scene_from_source) LOAD(obs_scene_add) LOAD(obs_scene_find_source) LOAD(obs_scene_enum_items) LOAD(obs_sceneitem_get_source) LOAD(obs_queue_task) LOAD(blog) LOAD(obs_source_get_width) LOAD(obs_source_get_height) LOAD(obs_source_get_output_flags) LOAD(obs_source_video_render) LOAD(obs_source_add_audio_capture_callback) LOAD(obs_source_remove_audio_capture_callback) LOAD(obs_get_audio) LOAD(audio_output_get_sample_rate) LOAD(obs_enter_graphics) LOAD(obs_leave_graphics) LOAD(gs_texrender_create) LOAD(gs_texrender_destroy) LOAD(gs_texrender_begin) LOAD(gs_texrender_end) LOAD(gs_texrender_get_texture) LOAD(gs_stagesurface_create) LOAD(gs_stagesurface_destroy) LOAD(gs_stage_texture) LOAD(gs_stagesurface_map) LOAD(gs_stagesurface_unmap) LOAD(gs_ortho) LOAD(gs_clear) LOAD(gs_blend_state_push) LOAD(gs_blend_state_pop) LOAD(gs_reset_blend_state)
 #undef LOAD
 if(!loadProfiles(lib)||!loadBackdrop(lib))return false;
+if(P audio=obs_get_audio())visualizerSampleRate=audio_output_get_sample_rate(audio);
 obs_frontend_get_current_scene=reinterpret_cast<decltype(obs_frontend_get_current_scene)>(GetProcAddress(front,"obs_frontend_get_current_scene"));obs_frontend_add_tools_menu_item=reinterpret_cast<decltype(obs_frontend_add_tools_menu_item)>(GetProcAddress(front,"obs_frontend_add_tools_menu_item"));obs_frontend_remove_dock=reinterpret_cast<decltype(obs_frontend_remove_dock)>(GetProcAddress(front,"obs_frontend_remove_dock"));obs_frontend_add_event_callback=reinterpret_cast<decltype(obs_frontend_add_event_callback)>(GetProcAddress(front,"obs_frontend_add_event_callback"));if(!obs_frontend_get_current_scene||!obs_frontend_add_tools_menu_item||!obs_frontend_remove_dock||!obs_frontend_add_event_callback)return false;
 wchar_t exe[MAX_PATH];GetModuleFileNameW(nullptr,exe,MAX_PATH);root=fs::path(exe).parent_path().parent_path().parent_path()/"data/obs-plugins/omni-mc";wchar_t appdata[MAX_PATH];GetEnvironmentVariableW(L"APPDATA",appdata,MAX_PATH);configPath=fs::path(appdata)/"obs-studio/plugin_config/omni-mc/settings.json";
 #ifdef OMNI_MC_TEST
 configPath=root/"../../../omni-mc/test-settings.json";
 #endif
  systemFontList=windowsFonts();settings=read(configPath);P validated=settings.empty()?nullptr:obs_data_create_from_json(settings.c_str());if(!validated)settings=R"({"session":"@none","skin":"overlay","blur":false,"backgroundSource":"","blurStrength":7,"backgroundColor":"#285154","opacity":42,"brightness":96,"barColor":"#ed4169","cornerRadius":25,"brand":"Omni MC","auto":false,"hideIfIdle":false,"showSeconds":1,"direction":"left"})";if(validated){settings=obs_data_get_json(validated);obs_data_release(validated);}
- WSADATA ws;if(WSAStartup(MAKEWORD(2,2),&ws))return false;listener=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);BOOL exclusive=TRUE;setsockopt(listener,SOL_SOCKET,SO_EXCLUSIVEADDRUSE,(char*)&exclusive,sizeof(exclusive));sockaddr_in a{};a.sin_family=AF_INET;a.sin_addr.s_addr=htonl(INADDR_LOOPBACK);a.sin_port=htons(port);if(bind(listener,(sockaddr*)&a,sizeof(a))||listen(listener,16)){blog(100,"[omni-mc] Local port 17843 is occupied");closesocket(listener);WSACleanup();return false;}obs_frontend_add_event_callback(frontendEvent,nullptr);running=true;serverThread=std::thread(serve);mediaThread=std::thread(mediaLoop);obs_frontend_add_tools_menu_item("Omni MC — Музыкальный плеер",openSettings,nullptr);blog(200,"[omni-mc] Loaded version %s; settings at http://127.0.0.1:17843/",pluginVersion);return true;}
+ WSADATA ws;if(WSAStartup(MAKEWORD(2,2),&ws))return false;listener=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);BOOL exclusive=TRUE;setsockopt(listener,SOL_SOCKET,SO_EXCLUSIVEADDRUSE,(char*)&exclusive,sizeof(exclusive));sockaddr_in a{};a.sin_family=AF_INET;a.sin_addr.s_addr=htonl(INADDR_LOOPBACK);a.sin_port=htons(port);if(bind(listener,(sockaddr*)&a,sizeof(a))||listen(listener,16)){blog(100,"[omni-mc] Local port 17843 is occupied");closesocket(listener);WSACleanup();return false;}obs_frontend_add_event_callback(frontendEvent,nullptr);running=true;serverThread=std::thread(serve);mediaThread=std::thread(mediaLoop);
+#ifndef OMNI_MC_TEST
+ updateThread=std::thread(checkForUpdates);
+#endif
+ obs_frontend_add_tools_menu_item(ui("Omni MC — Музыкальный плеер","Omni MC — Music Player"),openSettings,nullptr);blog(200,"[omni-mc] Loaded version %s; settings at http://127.0.0.1:17843/",pluginVersion);return true;}
 extern "C" __declspec(dllexport) void obs_module_unload(){stopWorkers();if(cef&&GetModuleHandleW(L"obs-browser.dll"))delete cef;cef=nullptr;}

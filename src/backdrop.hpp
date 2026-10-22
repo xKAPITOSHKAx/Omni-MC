@@ -32,6 +32,7 @@ API(bool,matrix4_inv,Matrix*,const Matrix*);
 API(void,gs_matrix_push);
 API(void,gs_matrix_pop);
 API(void,gs_matrix_mul,const Matrix*);
+API(void,gs_matrix_scale3f,float,float,float);
 API(void,gs_texrender_reset,P);
 API(P,gs_effect_create_from_file,const char*,char**);
 API(void,gs_effect_destroy,P);
@@ -55,8 +56,8 @@ struct Backdrop {
  std::shared_ptr<Profile> profile;
  P filter=nullptr,raw=nullptr,blur=nullptr,texture=nullptr,effect=nullptr;
  unsigned w=720,h=240;Matrix relative{};
- std::string cfg,name,skin,context;bool enabled=false,automatic=false,hideIfIdle=false,coverHidden=false;
- int strength=-1,seconds=5;float splitHeight=110,glassHeight=111;float brightness=1,tintOpacity=1,cornerRadius=25;
+ std::string cfg,name,skin,context;bool enabled=false,automatic=false,hideIfIdle=false,coverHidden=false,progressVisible=true;
+ int strength=-1,seconds=5;float splitHeight=110,glassHeight=111,rhythmCoverSize=165;float brightness=1,tintOpacity=1,cornerRadius=25;
  P coverTexture=nullptr;unsigned coverRevision=~0u;
  P backgroundSource=nullptr;
 };
@@ -111,12 +112,10 @@ static void rawRender(P pointer,P)
  if(selected!=player){
   P scene=b->profile?obs_get_source_by_uuid(b->profile->id.c_str()):obs_frontend_get_current_scene();Matrix playerWorld,backgroundWorld,inverse;
   matrix4_identity(&playerWorld);matrix4_identity(&backgroundWorld);
-  bool located=scene&&sourceTransform(scene,player,playerWorld);
-  if(scene)sourceTransform(scene,selected,backgroundWorld);
+  bool located=scene&&sourceTransform(scene,player,playerWorld),backgroundLocated=scene&&sourceTransform(scene,selected,backgroundWorld);
   if(scene)obs_source_release(scene);
   if(located&&matrix4_inv(&inverse,&playerWorld)){
-   matrix4_mul(&b->relative,&backgroundWorld,&inverse);
-   gs_matrix_push();gs_matrix_mul(&b->relative);
+   gs_matrix_push();if(backgroundLocated){matrix4_mul(&b->relative,&backgroundWorld,&inverse);gs_matrix_mul(&b->relative);}else{unsigned sourceWidth=obs_source_get_width(selected),sourceHeight=obs_source_get_height(selected),contentWidth=b->w>100?b->w-100:b->w,contentHeight=b->h>100?b->h-100:b->h;if(!sourceWidth||!sourceHeight){gs_matrix_pop();obs_source_release(selected);return;}float scale=std::max((float)contentWidth/sourceWidth,(float)contentHeight/sourceHeight);gs_matrix_translate3f(50+((float)contentWidth-sourceWidth*scale)/2,50+((float)contentHeight-sourceHeight*scale)/2,0);gs_matrix_scale3f(scale,scale,1);}
    renderingBackdrop=true;obs_source_video_render(selected);renderingBackdrop=false;
    gs_matrix_pop();
   }
@@ -151,6 +150,7 @@ static void backdropTick(P pointer,float)
  if(cfg!=b->cfg){b->cfg=cfg;P data=obs_data_create_from_json(cfg.c_str());
   b->name=obs_data_get_string(data,"backgroundSource");b->enabled=obs_data_get_bool(data,"blur")&&!b->name.empty();
   b->skin=obs_data_get_string(data,"skin");b->coverHidden=b->skin!="cover"&&b->skin!="vinyl"&&b->skin!="orbit"&&b->skin!="prism"&&b->skin!="eclipse"&&obs_data_has_user_value(data,"showTrackCover")&&!obs_data_get_bool(data,"showTrackCover");auto fontScale=[&](const char*key){auto v=obs_data_get_int(data,key);return (float)std::clamp<long long>(v?v:100,50,200)/100.f;};auto thicknessValue=obs_data_get_int(data,"progressThickness");float thickness=(float)std::clamp<long long>(thicknessValue?thicknessValue:(b->skin=="compact-bar"?3:5),1,12);bool showProgress=!obs_data_has_user_value(data,"progressVisible")||obs_data_get_bool(data,"progressVisible");bool adapt=!obs_data_has_user_value(data,"adaptiveSize")||obs_data_get_bool(data,"adaptiveSize"),shrink=adapt&&!showProgress;b->splitHeight=std::max(shrink?90.f:110.f,(shrink?50.f:70.f)+std::max(0.f,thickness-3.f)+16.f*fontScale("artistScale")+14.f*fontScale("titleScale"));b->glassHeight=(showProgress||!adapt?73.f+thickness:46.f)+16.f*fontScale("artistScale")+16.f*fontScale("titleScale");if(showProgress)b->glassHeight+=thickness-3.f;b->automatic=obs_data_get_bool(data,"auto");b->seconds=(int)std::clamp<long long>(obs_data_get_int(data,"showSeconds")?obs_data_get_int(data,"showSeconds"):5,1,30);
+  b->progressVisible=showProgress;auto coverScaleValue=obs_data_get_int(data,"coverScale");b->rhythmCoverSize=150.f*(float)std::clamp<long long>(coverScaleValue?coverScaleValue:110,50,150)/100.f;
   if(b->skin=="compact-bar")b->coverHidden=false;
   b->hideIfIdle=obs_data_get_bool(data,"hideIfIdle");
   b->brightness=std::clamp((float)obs_data_get_int(data,"brightness")/100.f,.1f,1.5f);
@@ -189,26 +189,30 @@ static void backdropRender(P pointer,P)
  }
  P texture=gs_texrender_get_texture(b->texture);if(!texture||!obs_source_process_filter_begin(b->filter,3,0)){obs_source_skip_video_filter(b->filter);return;}
  float logicalWidth=(float)b->w,logicalHeight=(float)b->h;
- float rect[4]={70,72,logicalWidth-140,logicalHeight-144};
- if(b->skin=="compact-bar"||b->coverHidden&&b->skin!="compact"||b->skin=="prism"||b->skin=="cassette"||b->skin=="orbit"||b->skin=="vinyl"||b->skin=="poster"||b->skin=="cinematic"||b->skin=="glass"){rect[0]=70;rect[1]=70;rect[2]=logicalWidth-140;rect[3]=logicalHeight-140;}else if(b->skin=="split"){rect[0]=70;rect[1]=logicalHeight-70-b->splitHeight;rect[2]=logicalWidth-140;rect[3]=b->splitHeight;}
+ float rect[4]={70,72,logicalWidth-140,logicalHeight-144},rect2[4]={0,0,0,0};float multiPanel=0;
+ if(b->skin=="compact-bar"||b->coverHidden&&b->skin!="compact"||b->skin=="prism"||b->skin=="cassette"||b->skin=="orbit"||b->skin=="vinyl"||b->skin=="poster"||b->skin=="cinematic"||b->skin=="glass"||b->skin=="gargantua"){rect[0]=70;rect[1]=70;rect[2]=logicalWidth-140;rect[3]=logicalHeight-140;}else if(b->skin=="split"){rect[0]=70;rect[1]=logicalHeight-70-b->splitHeight;rect[2]=logicalWidth-140;rect[3]=b->splitHeight;}
+ if(b->skin=="gargantua"||b->skin=="vector"||b->skin=="pulse"||b->skin=="cosmos"){rect[0]=69;rect[1]=69;rect[2]=logicalWidth-138;rect[3]=logicalHeight-138;}
+ if(b->skin=="rhythm"){float metaX=b->coverHidden?70.f:70.f+b->rhythmCoverSize+12.f,metaHeight=std::max(165.f,b->rhythmCoverSize);rect[0]=metaX;rect[1]=70;rect[2]=std::max(0.f,logicalWidth-70.f-metaX);rect[3]=b->progressVisible?metaHeight*.58f:metaHeight;if(b->progressVisible){rect2[0]=metaX;rect2[1]=70.f+metaHeight*.58f+10.f;rect2[2]=rect[2];rect2[3]=std::max(0.f,metaHeight*.42f-10.f);multiPanel=1;}}
  if(b->skin=="eclipse"){rect[0]=146;rect[1]=74;rect[2]=logicalWidth-216;rect[3]=logicalHeight-148;}
  float progress=appearance(b);std::string direction;{std::lock_guard lock(mutex);P data=obs_data_create_from_json(b->profile->cfg.c_str());direction=obs_data_get_string(data,"direction");obs_data_release(data);}
  float animationHeight=(b->skin=="split"||b->skin=="glass")?logicalHeight-140:rect[3];
- if(direction=="right")rect[0]+=(1-progress)*rect[2]*1.1f;
- else if(direction=="top")rect[1]-=(1-progress)*animationHeight*1.2f;
- else if(direction=="bottom")rect[1]+=(1-progress)*animationHeight*1.2f;
- else if(direction!="fade")rect[0]-=(1-progress)*rect[2]*1.1f;
+ float moveX=0,moveY=0;if(direction=="right")moveX=(1-progress)*rect[2]*1.1f;
+ else if(direction=="top")moveY=-(1-progress)*animationHeight*1.2f;
+ else if(direction=="bottom")moveY=(1-progress)*animationHeight*1.2f;
+ else if(direction!="fade")moveX=-(1-progress)*rect[2]*1.1f;rect[0]+=moveX;rect[1]+=moveY;rect2[0]+=moveX;rect2[1]+=moveY;
  float fillTop=-1.f;
  float size[4]={(float)b->w,(float)b->h,1,1};
  gs_effect_set_texture(gs_effect_get_param_by_name(b->effect,"backdrop"),texture);
  gs_effect_set_vec4(gs_effect_get_param_by_name(b->effect,"panel"),rect);
+ gs_effect_set_vec4(gs_effect_get_param_by_name(b->effect,"panel2"),rect2);
  gs_effect_set_vec4(gs_effect_get_param_by_name(b->effect,"size"),size);
  gs_effect_set_float(gs_effect_get_param_by_name(b->effect,"visibility"),progress);
  gs_effect_set_float(gs_effect_get_param_by_name(b->effect,"brightness"),b->brightness);
  gs_effect_set_float(gs_effect_get_param_by_name(b->effect,"tintOpacity"),b->tintOpacity);
  gs_effect_set_float(gs_effect_get_param_by_name(b->effect,"fillTop"),fillTop);
- gs_effect_set_float(gs_effect_get_param_by_name(b->effect,"radius"),std::min({b->cornerRadius,rect[2]*.5f,rect[3]*.5f}));
+ float maskRadius=std::min({b->cornerRadius,rect[2]*.5f,rect[3]*.5f});if(multiPanel>0.5f)maskRadius=std::min({maskRadius,rect2[2]*.5f,rect2[3]*.5f});gs_effect_set_float(gs_effect_get_param_by_name(b->effect,"radius"),maskRadius);
  gs_effect_set_float(gs_effect_get_param_by_name(b->effect,"leftRadius"),0.f);
+ gs_effect_set_float(gs_effect_get_param_by_name(b->effect,"multiPanel"),multiPanel);
  // The composite shader returns premultiplied RGBA; preserve its edge colors.
  gs_blend_state_push();gs_blend_function(1,5);
  obs_source_process_filter_end(b->filter,b->effect,b->w,b->h);
@@ -217,7 +221,7 @@ static void backdropRender(P pointer,P)
 static bool loadBackdrop(HMODULE lib)
 {
 #define BLOAD(name) name=reinterpret_cast<decltype(name)>(GetProcAddress(lib,#name));if(!name)return false;
- BLOAD(obs_register_source_s) BLOAD(obs_source_create_private) BLOAD(obs_source_get_filter_by_name) BLOAD(obs_source_filter_add) BLOAD(obs_source_filter_remove) BLOAD(obs_source_enum_filters) BLOAD(obs_source_inc_showing) BLOAD(obs_source_dec_showing) BLOAD(obs_source_get_weak_source) BLOAD(obs_weak_source_get_source) BLOAD(obs_weak_source_release) BLOAD(obs_filter_get_parent) BLOAD(obs_source_skip_video_filter) BLOAD(obs_source_process_filter_begin) BLOAD(obs_source_process_filter_end) BLOAD(obs_data_set_double) BLOAD(obs_data_has_user_value) BLOAD(obs_group_from_source) BLOAD(obs_sceneitem_get_draw_transform) BLOAD(obs_sceneitem_visible) BLOAD(matrix4_mul) BLOAD(matrix4_inv) BLOAD(gs_matrix_push) BLOAD(gs_matrix_pop) BLOAD(gs_matrix_mul) BLOAD(gs_texrender_reset) BLOAD(gs_effect_create_from_file) BLOAD(gs_effect_destroy) BLOAD(gs_effect_get_param_by_name) BLOAD(gs_effect_set_texture) BLOAD(gs_effect_set_float) BLOAD(gs_effect_set_vec4)
+ BLOAD(obs_register_source_s) BLOAD(obs_source_create_private) BLOAD(obs_source_get_filter_by_name) BLOAD(obs_source_filter_add) BLOAD(obs_source_filter_remove) BLOAD(obs_source_enum_filters) BLOAD(obs_source_inc_showing) BLOAD(obs_source_dec_showing) BLOAD(obs_source_get_weak_source) BLOAD(obs_weak_source_get_source) BLOAD(obs_weak_source_release) BLOAD(obs_filter_get_parent) BLOAD(obs_source_skip_video_filter) BLOAD(obs_source_process_filter_begin) BLOAD(obs_source_process_filter_end) BLOAD(obs_data_set_double) BLOAD(obs_data_has_user_value) BLOAD(obs_group_from_source) BLOAD(obs_sceneitem_get_draw_transform) BLOAD(obs_sceneitem_visible) BLOAD(matrix4_mul) BLOAD(matrix4_inv) BLOAD(gs_matrix_push) BLOAD(gs_matrix_pop) BLOAD(gs_matrix_mul) BLOAD(gs_matrix_scale3f) BLOAD(gs_texrender_reset) BLOAD(gs_effect_create_from_file) BLOAD(gs_effect_destroy) BLOAD(gs_effect_get_param_by_name) BLOAD(gs_effect_set_texture) BLOAD(gs_effect_set_float) BLOAD(gs_effect_set_vec4)
  BLOAD(gs_texture_create) BLOAD(gs_texture_destroy) BLOAD(gs_texture_get_width) BLOAD(gs_texture_get_height) BLOAD(gs_draw_sprite) BLOAD(obs_get_base_effect) BLOAD(gs_effect_loop) BLOAD(gs_matrix_translate3f) BLOAD(gs_blend_function)
 #undef BLOAD
  SourceInfo raw{};raw.id="omni_mc_background_region";raw.type=0;raw.flags=1|8|1024;raw.name=rawName;raw.create=rawContextCreate;raw.destroy=rawDestroy;raw.width=rawWidth;raw.height=rawHeight;raw.render=rawRender;obs_register_source_s(&raw,sizeof(raw));

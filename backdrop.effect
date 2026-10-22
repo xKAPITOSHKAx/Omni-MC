@@ -2,6 +2,7 @@ uniform float4x4 ViewProj;
 uniform texture2d image;
 uniform texture2d backdrop;
 uniform float4 panel;
+uniform float4 panel2;
 uniform float4 size;
 uniform float visibility;
 uniform float brightness;
@@ -9,21 +10,31 @@ uniform float tintOpacity;
 uniform float fillTop;
 uniform float radius;
 uniform float leftRadius;
+uniform float multiPanel;
 sampler_state linearSampler { Filter = Linear; AddressU = Clamp; AddressV = Clamp; };
 struct VertData { float4 pos : POSITION; float2 uv : TEXCOORD0; };
 VertData VSDefault(VertData v) { v.pos = mul(float4(v.pos.xyz, 1.0), ViewProj); return v; }
+float roundedBoxDistance(float2 pixel, float4 box, float cornerRadius)
+{
+ float2 center = box.xy + box.zw * 0.5;
+ float2 q = abs(pixel - center) - box.zw * 0.5 + cornerRadius;
+ return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - cornerRadius;
+}
 float4 PSComposite(VertData v) : TARGET
 {
  float4 original = image.Sample(linearSampler, v.uv);
  float2 center = panel.xy + panel.zw * 0.5;
  float cornerRadius = leftRadius > 0.0 && v.uv.x * size.x < center.x ? leftRadius : radius;
- float2 q = abs(v.uv * size.xy - center) - panel.zw * 0.5 + cornerRadius;
- float distance = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - cornerRadius;
+ float2 pixel = v.uv * size.xy;
+ float distance = roundedBoxDistance(pixel, panel, cornerRadius);
+ if (multiPanel > 0.5) distance = min(distance, roundedBoxDistance(pixel, panel2, radius));
  float sdfCoverage = saturate(0.5 - distance) * visibility;
  if (fillTop >= 0.0 && v.uv.y * size.y < fillTop) sdfCoverage = 0.0;
  // With a visible tint, derive the edge from CEF's real antialiasing so the
  // browser layer and the native backdrop cannot form a seam.
- float coverage = tintOpacity > 0.001
+ float coverage = multiPanel > 0.5
+  ? sdfCoverage
+  : tintOpacity > 0.001
   ? min(sdfCoverage, saturate(original.a / tintOpacity))
   : saturate(0.5 - (distance + 1.0)) * visibility;
  float4 background = backdrop.Sample(linearSampler, v.uv);
