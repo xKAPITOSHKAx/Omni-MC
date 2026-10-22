@@ -96,7 +96,7 @@ static SOCKET listener=INVALID_SOCKET;
 static std::thread serverThread,mediaThread,updateThread;
 static std::mutex mutex;
 static fs::path root,configPath;
-static constexpr const char*pluginVersion="1.3.6";
+static constexpr const char*pluginVersion="1.4.0";
 static constexpr const wchar_t*updateApiPath=L"/repos/xKAPITOSHKAx/Omni-mc/releases/latest";
 static constexpr const wchar_t*updatePage=L"https://github.com/xKAPITOSHKAx/Omni-mc/releases/latest";
 static std::string settings,media="{\"sessions\":[],\"title\":\"\",\"artist\":\"\",\"playing\":false}",sources="[]",audioSources="[]",systemFontList="[]",cover,background,mediaCommand;

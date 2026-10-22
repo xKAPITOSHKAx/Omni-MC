@@ -2,7 +2,7 @@
 
 **Русский** · [English](#omni-mc-for-obs-studio)
 
-Версия плагина: **v1.3.6**. Платформа: **Windows x64**. Проверенная версия OBS Studio: **32.1.0**.
+Версия плагина: **v1.4.0**. Платформа: **Windows x64**. Проверенная версия OBS Studio: **32.1.0**.
 
 Omni MC — музыкальный плеер для OBS Studio. Плагин получает сведения о текущем треке из медиасессий Windows и выводит их в настраиваемый браузерный источник.
 
@@ -88,7 +88,7 @@ Omni MC — музыкальный плеер для OBS Studio. Плагин п
 
 [Русский](#omni-mc-для-obs-studio) · **English**
 
-Plugin version: **v1.3.6**. Platform: **Windows x64**. Tested with OBS Studio **32.1.0**.
+Plugin version: **v1.4.0**. Platform: **Windows x64**. Tested with OBS Studio **32.1.0**.
 
 Omni MC is a music player for OBS Studio. It reads the current track from Windows media sessions and displays it in a customizable browser source.
 
