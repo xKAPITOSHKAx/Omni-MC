@@ -17,24 +17,38 @@ Omni MC — музыкальный плеер для OBS Studio. Плагин п
 <details>
 <summary><strong>Полный список возможностей плагина</strong></summary>
 
+- Панель управления **Omni MC** в OBS, пункт в меню **Сервис** и локальная страница настроек.
 - Получение названия трека, исполнителя, обложки, длительности, позиции и состояния воспроизведения через Windows System Media Transport Controls.
-- Автоматический выбор активной медиасессии или ручной выбор приложения.
+- Автоматический выбор активной медиасессии, ручной выбор приложения или полное отключение выбора.
 - Управление воспроизведением: предыдущий трек, воспроизведение, пауза и следующий трек.
-- Перемотка трека с помощью полосы прогресса.
+- Перемотка мышью или клавиатурой с помощью полосы прогресса.
+- Плавное обновление времени и прогресса между ответами медиасессии с учётом скорости воспроизведения.
+- Дополнительное получение позиции и длительности из интерфейса приложения Яндекс Музыка, если медиасессия не передаёт их.
 - Управление громкостью выбранного приложения и отключение его звука, если приложение поддерживает такое управление.
-- Семнадцать шаблонов плеера: По умолчанию, Компактный, Обложка, Винил, Стекло, Постер, Кино, Дуэт, Призма, Кассета, Орбита, Затмение, Неон, Вектор, Импульс, Космос и Гаргантюа.
-- Настройка обложки, размеров виджета, скругления углов, прозрачности, яркости, цветов, шрифта, начертания и размеров текста.
-- Автоматический подбор цветов интерфейса по обложке трека.
-- Несколько анимаций полосы прогресса: без анимации, плавный возврат, рассыпание и фитиль.
+- Восемнадцать шаблонов плеера: По умолчанию, Компактный, Обложка, Винил, Стекло, Постер, Кино, Дуэт, Призма, Кассета, Орбита, Затмение, Неон, Вектор, Импульс, Космос, Гаргантюа и Ритм.
+- Индивидуальные анимации шаблонов: вращение винила и кассеты, движение тонарма по прогрессу, орбитальные элементы, неоновые эффекты, звёздное поле, аккреционный диск и другие визуальные реакции на воспроизведение и смену обложки.
+- Шаблон **Ритм** с выбором аудиоисточника OBS и живым 21‑полосным эквалайзером, реагирующим на звук.
+- Показ или скрытие обложки, изменение её размера и автоматическая повторная загрузка, если приложение не сразу передало изображение.
+- Показ или скрытие кнопок управления в поддерживаемых шаблонах.
+- Настройка ширины и высоты виджета, адаптация размера к содержимому и автоматическое изменение размера браузерного источника.
+- Настройка скругления углов, прозрачности, яркости, цвета подложки и цвета полосы прогресса.
+- Предварительный просмотр результата в панели настроек и сброс оформления к исходным значениям.
+- Автоматический подбор цветов плеера по обложке трека, включая цвет тени.
+- Выбор любого установленного системного шрифта, его начертания, размера названия и размера исполнителя.
+- Показ или скрытие прогресса и времени трека, а также настройка толщины полосы.
+- Четыре режима прогресса: без анимации, плавный возврат, рассыпание и фитиль.
 - Прозрачный фон, фон из обложки трека либо выбранной сцены или источника OBS.
-- Размытие области под плеером через Composite Blur с учётом положения и масштаба источника в сцене.
-- Внешняя и внутренняя тень с настройкой размера, интенсивности, угла, расстояния, цвета и источника заливки через Stroke Glow Shadow.
-- Автопоказ плеера после смены трека с настраиваемой длительностью.
-- Скрытие плеера, когда музыка не воспроизводится.
-- Анимации появления и скрытия: затухание, слева, справа, сверху и снизу.
-- Отдельные настройки для каждой сцены OBS. При переключении сцены панель автоматически загружает её профиль.
-- Автоматическое изменение размера браузерного источника при выборе другого шаблона.
-- Встроенная тестовая кнопка для предварительного просмотра плеера без смены трека.
+- Размытие области под плеером через Composite Blur с настройкой силы и учётом положения и масштаба источника, включая источники внутри групп и вложенных сцен.
+- Ограничение фона формой карточки или отдельных панелей шаблона; плеер исключается из захватываемого фона, чтобы не возникала обратная связь.
+- Внешняя и внутренняя тень через Stroke Glow Shadow с выбором типа размытия, заполнения, учёта границ, размера, интенсивности, угла, расстояния, цвета или источника заливки.
+- Автопоказ плеера после смены трека на время от 1 до 30 секунд.
+- Скрытие плеера и его фонового эффекта при паузе, остановке или отсутствии музыки.
+- Синхронные анимации плеера и фона: затухание, слева, справа, сверху и снизу.
+- Тестовый показ плеера на пять секунд без смены трека.
+- Отдельный профиль и отдельный браузерный источник для каждой сцены OBS с автоматическим переключением настроек.
+- Автоматическое восстановление связи источника со сценой и исправление его размеров.
+- Перенос старого общего источника в отдельные источники сцен с сохранением положения, масштаба, обрезки, порядка и видимости.
+- Автоматическое сохранение настроек; состояние свёрнутых разделов, компактный режим панели и цвет её интерфейса также запоминаются.
 - Русский и английский интерфейс с автоматическим выбором языка по языку OBS Studio.
 - Проверка новых версий через GitHub Releases при запуске OBS. Для отдельной версии уведомление можно отключить.
 - Весь интерфейс встроен в DLL и работает локально без внешнего сайта. Сервер доступен только по адресу `127.0.0.1:17843` во время работы OBS.
@@ -78,24 +92,38 @@ Omni MC is a music player for OBS Studio. It reads the current track from Window
 <details>
 <summary><strong>Full plugin feature list</strong></summary>
 
+- An **Omni MC** control dock in OBS, a **Tools** menu entry, and a local settings page.
 - Reads the track title, artist, cover art, duration, position, and playback state through Windows System Media Transport Controls.
-- Automatically selects the active media session or lets you select an app manually.
+- Automatic active-session selection, manual app selection, or no selected session.
 - Playback controls for previous track, play, pause, and next track.
-- Track seeking through the progress bar.
+- Mouse and keyboard seeking through the progress bar.
+- Smooth time and progress updates between media-session responses while accounting for the playback rate.
+- An additional Yandex Music interface fallback for position and duration when its media session does not provide them.
 - Volume and mute control for the selected app when supported.
-- Seventeen player templates: Default, Compact, Cover, Vinyl, Glass, Poster, Cinematic, Duo, Prism, Cassette, Orbit, Eclipse, Neon, Vector, Pulse, Cosmos, and Gargantua.
-- Controls for cover art, widget size, corner radius, opacity, brightness, colors, font family, font weight, and text size.
-- Automatic interface colors based on the track cover.
-- Multiple progress animations: none, smooth return, scatter, and wick.
+- Eighteen player templates: Default, Compact, Cover, Vinyl, Glass, Poster, Cinematic, Duo, Prism, Cassette, Orbit, Eclipse, Neon, Vector, Pulse, Cosmos, Gargantua, and Rhythm.
+- Template-specific animations include spinning vinyl and cassette reels, a progress-driven tonearm, orbiting elements, neon effects, a star field, an accretion disk, and other reactions to playback and cover changes.
+- The **Rhythm** template with a selectable OBS audio source and a live 21-band equalizer driven by its audio.
+- Cover visibility and size controls, with automatic retries when an app does not provide its artwork immediately.
+- Optional playback buttons in supported templates.
+- Widget width and height controls, content-aware sizing, and automatic browser-source resizing.
+- Controls for corner radius, opacity, brightness, background color, and progress color.
+- A live preview in the settings dock and an option to reset the appearance to its defaults.
+- Automatic player colors based on the track cover, including the shadow color.
+- Selection of any installed system font, font weight, title size, and artist size.
+- Optional track progress and time display with adjustable bar thickness.
+- Four progress modes: none, smooth return, scatter, and wick.
 - Transparent background, track cover background, or any selected OBS scene or source.
-- Composite Blur integration that blurs only the area beneath the player while accounting for its scene position and scale.
-- Outer and inner shadows with adjustable size, intensity, angle, distance, color, and fill source through Stroke Glow Shadow.
-- Automatic player display after a track change with a configurable duration.
-- Option to hide the player when nothing is playing.
-- Show and hide animations: fade, from left, right, top, or bottom.
-- Independent settings for every OBS scene. The matching profile loads automatically when the scene changes.
-- Automatic browser-source resizing when another template is selected.
-- Built-in test button for previewing the player without changing tracks.
+- Composite Blur integration with adjustable strength that accounts for source position and scale, including sources inside groups and nested scenes.
+- Background clipping to the player card or separate template panels; the player is excluded from its captured background to prevent feedback.
+- Outer and inner shadows through Stroke Glow Shadow with blur type, fill, source-boundary handling, size, intensity, angle, distance, color, and fill-source controls.
+- Automatic player display for 1 to 30 seconds after a track changes.
+- Hides the player and its background effect while paused, stopped, or without music.
+- Synchronized player and background animations: fade, from left, right, top, or bottom.
+- A five-second test preview without changing tracks.
+- An independent profile and browser source for every OBS scene, with automatic settings switching.
+- Automatic repair of scene bindings and browser-source dimensions.
+- Migration from the old shared source to per-scene sources while preserving position, scale, crop, order, and visibility.
+- Automatic settings saving; collapsed sections, compact dock mode, and the dock accent color are remembered as well.
 - Russian and English interfaces selected automatically from the OBS Studio language.
 - Checks GitHub Releases for updates when OBS starts. Notifications can be disabled for a specific version.
 - The entire interface is embedded in the DLL and works locally without an external website. The server is available only at `127.0.0.1:17843` while OBS is running.
