@@ -95,7 +95,7 @@ Omni MC — музыкальный плеер для OBS Studio. Плагин п
 
 > Отправляйте USDT только через сеть TRC20.
 
-**Gram (ex-Toncoin):**
+**Gram (ex-Toncoin) и токены в сети TON:**
 
 `UQDeOTeen2bWoVypftJ2DYbRl1FfR-QE27kDgv9KwXaDnyt0`
 
@@ -202,7 +202,7 @@ If you would like to support Omni MC development:
 
 > Send USDT using the TRC20 network only.
 
-**Gram (ex-Toncoin):**
+**Gram (ex-Toncoin) and tokens on the TON network:**
 
 `UQDeOTeen2bWoVypftJ2DYbRl1FfR-QE27kDgv9KwXaDnyt0`
 
