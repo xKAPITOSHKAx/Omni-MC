@@ -95,6 +95,10 @@ Omni MC — музыкальный плеер для OBS Studio. Плагин п
 
 > Отправляйте USDT только через сеть TRC20.
 
+**Gram (ex-Toncoin):**
+
+`UQDeOTeen2bWoVypftJ2DYbRl1FfR-QE27kDgv9KwXaDnyt0`
+
 ## Лицензия
 
 Проект распространяется по лицензии GPL-2.0-or-later. Полный текст находится в файле [LICENSE](LICENSE).
@@ -197,6 +201,10 @@ If you would like to support Omni MC development:
 `TBeitBpdgXjEDRgvhKnEvd9nxG3z5oQGA1`
 
 > Send USDT using the TRC20 network only.
+
+**Gram (ex-Toncoin):**
+
+`UQDeOTeen2bWoVypftJ2DYbRl1FfR-QE27kDgv9KwXaDnyt0`
 
 ## License
 
