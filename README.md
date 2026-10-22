@@ -75,6 +75,8 @@ Omni MC — музыкальный плеер для OBS Studio. Плагин п
 
 Музыкальное приложение должно передавать медиасессию Windows. Объём доступных данных и команд зависит от самого приложения. Omni MC не распознаёт треки по звуку и не передаёт звук в OBS — для этого используйте захват звука приложения или звук рабочего стола.
 
+Плагин работает с браузерами, которые передают медиасессию в Windows. **Яндекс Браузер не поддерживается**, поскольку он не передаёт медиасессию в Windows.
+
 Для размытия требуется [Composite Blur](https://obsproject.com/forum/resources/composite-blur.1780/), а для теней — [Stroke Glow Shadow](https://obsproject.com/forum/resources/stroke-glow-shadow.1800/). Остальные функции плеера могут использоваться без этих эффектов.
 
 Настройки сцен сохраняются в `%APPDATA%\obs-studio\plugin_config\omni-mc\scenes`. При переключении сцен загружается соответствующий профиль.
@@ -165,6 +167,8 @@ Omni MC is a music player for OBS Studio. It reads the current track from Window
 ## Compatibility and optional plugins
 
 The music app must expose a Windows media session. Available metadata and controls depend on the app. Omni MC does not identify tracks from audio and does not route audio into OBS; use Application Audio Capture or desktop audio for that.
+
+The plugin works with browsers that expose a media session to Windows. **Yandex Browser is not supported** because it does not expose a media session to Windows.
 
 [Composite Blur](https://obsproject.com/forum/resources/composite-blur.1780/) is required for background blur, and [Stroke Glow Shadow](https://obsproject.com/forum/resources/stroke-glow-shadow.1800/) is required for shadows. Other player features work without these effects.
 
