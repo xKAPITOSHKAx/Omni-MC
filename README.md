@@ -85,6 +85,16 @@ Omni MC — музыкальный плеер для OBS Studio. Плагин п
 
 Нативный код находится в `src`, интерфейс — в `web`. Файл `omni-mc.rc` встраивает HTML, CSS и JavaScript внутрь DLL. Проект использует C++17, Windows SDK и C++/WinRT. Исходные файлы сохранены в UTF-8 без BOM.
 
+## Поддержать проект
+
+Если вы хотите поддержать разработку Omni MC:
+
+**USDT TRC20:**
+
+`TBeitBpdgXjEDRgvhKnEvd9nxG3z5oQGA1`
+
+> Отправляйте USDT только через сеть TRC20.
+
 ## Лицензия
 
 Проект распространяется по лицензии GPL-2.0-or-later. Полный текст находится в файле [LICENSE](LICENSE).
@@ -177,6 +187,16 @@ Scene profiles are stored in `%APPDATA%\obs-studio\plugin_config\omni-mc\scenes`
 ## Source code
 
 Native code is located in `src`, and the interface is located in `web`. The `omni-mc.rc` file embeds the HTML, CSS, and JavaScript into the DLL. The project uses C++17, the Windows SDK, and C++/WinRT. Source files are stored as UTF-8 without BOM.
+
+## Support the project
+
+If you would like to support Omni MC development:
+
+**USDT TRC20:**
+
+`TBeitBpdgXjEDRgvhKnEvd9nxG3z5oQGA1`
+
+> Send USDT using the TRC20 network only.
 
 ## License
 
