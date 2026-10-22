@@ -24,20 +24,20 @@ Omni MC — музыкальный плеер для OBS Studio. Плагин п
 3. Распакуйте архив.
 4. Создайте папку `C:\ProgramData\obs-studio\plugins\omni-mc\bin\64bit`, если её ещё нет.
 5. Скопируйте файл `omni-mc.dll` в эту папку.
-6. Запустите OBS Studio. Плагин появится в меню **Сервис → Omni MC — Музыкальный плеер**.
+6. Запустите OBS Studio. Панель плагина появится в меню **Док-панели → Omni MC**.
 
 Для портативной версии OBS поместите `omni-mc.dll` в `<папка OBS>\obs-plugins\64bit`.
 
 ## Первый запуск
 
-1. Откройте панель **Omni MC** через меню **Сервис → Omni MC — Музыкальный плеер**.
+1. Откройте панель через меню **Док-панели → Omni MC**.
 2. Запустите музыку и выберите приложение в списке либо оставьте автоматический выбор.
 3. Настройте внешний вид и нажмите **Добавить плеер в источник**.
 
 <details>
 <summary><strong>Полный список возможностей плагина</strong></summary>
 
-- Панель управления **Omni MC** в OBS, пункт в меню **Сервис** и локальная страница настроек.
+- Панель управления **Omni MC** в меню док-панелей OBS и локальная страница настроек.
 - Получение названия трека, исполнителя, обложки, длительности, позиции и состояния воспроизведения через Windows System Media Transport Controls.
 - Автоматический выбор активной медиасессии, ручной выбор приложения или полное отключение выбора.
 - Управление воспроизведением: предыдущий трек, воспроизведение, пауза и следующий трек.
@@ -119,20 +119,20 @@ Omni MC is a music player for OBS Studio. It reads the current track from Window
 3. Extract the archive.
 4. Create `C:\ProgramData\obs-studio\plugins\omni-mc\bin\64bit` if it does not already exist.
 5. Copy `omni-mc.dll` into that folder.
-6. Start OBS Studio. The plugin will appear under **Tools → Omni MC — Music Player**.
+6. Start OBS Studio. The plugin dock will appear under **Docks → Omni MC**.
 
 For a portable OBS installation, place `omni-mc.dll` in `<OBS folder>\obs-plugins\64bit`.
 
 ## First launch
 
-1. Open the **Omni MC** dock through **Tools → Omni MC — Music Player**.
+1. Open the dock through **Docks → Omni MC**.
 2. Start playing music and select an app, or keep automatic selection enabled.
 3. Customize the appearance and click **Add player to source**.
 
 <details>
 <summary><strong>Full plugin feature list</strong></summary>
 
-- An **Omni MC** control dock in OBS, a **Tools** menu entry, and a local settings page.
+- An **Omni MC** control panel in the OBS **Docks** menu and a local settings page.
 - Reads the track title, artist, cover art, duration, position, and playback state through Windows System Media Transport Controls.
 - Automatic active-session selection, manual app selection, or no selected session.
 - Playback controls for previous track, play, pause, and next track.
